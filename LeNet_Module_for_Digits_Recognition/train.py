@@ -2,13 +2,25 @@ from LeNet_Module import LeNet
 import numpy as np
 import os
 import torch
+import visdom
 from torchvision.datasets import mnist
 from torch.nn import CrossEntropyLoss
 from torch.optim import SGD
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
 
-if __name__ == '__main__':
+# define visualization parameters
+viz = visdom.Visdom(env=u'LeNet Module', use_incoming_socket=False)
+cur_batch_window = None
+cur_batch_window_opts = {
+    'title': 'Epoch Loss Trace',
+    'xlabel': 'Batch Number',
+    'ylabel': 'Loss',
+    'width': 1200,
+    'height': 600,
+}
+
+def main():
     # load train and test data
     batch_size = 256
     train_dataset = mnist.MNIST(root='./train', train=True, transform=ToTensor())
@@ -27,10 +39,12 @@ if __name__ == '__main__':
     # initialize the training parameters
     train_epoches_num = 100
     prev_accuracy = 0
+    global cur_batch_window
 
     for current_epoch_num in range(train_epoches_num):
         # begin training
         model.train()               # set model into training
+        loss_list, batch_list = [], []
         for idx, (train_x, train_label) in enumerate(train_loader):
             # move train data to device
             train_x = train_x.to(device)
@@ -38,10 +52,20 @@ if __name__ == '__main__':
             # get predict y and compute the error
             predict_y = model(train_x.float())
             loss = loss_function(predict_y, train_label.long())
+            # update visualization
+            loss_list.append(loss.detach().cpu().item())
+            batch_list.append(idx + 1)
             # clear the gradient data and update parameters based on error
             sgd.zero_grad()
             loss.backward()
             sgd.step()
+        
+        # visualization
+        if viz.check_connection():
+            cur_batch_window = viz.line(torch.Tensor(loss_list), torch.Tensor(batch_list),
+                                win=cur_batch_window, name='epoch' + str(current_epoch_num),
+                                update=(None if cur_batch_window is None else 'append'),
+                                opts=cur_batch_window_opts)
         
         # initialize the testing parameters
         test_correct_num = 0
@@ -71,6 +95,10 @@ if __name__ == '__main__':
         if np.abs(accuracy - prev_accuracy) < 1e-4:
             break
         prev_accuracy = accuracy
+    
+
+if __name__ == '__main__':
+    main()
     print("Model finished training")
 
 
