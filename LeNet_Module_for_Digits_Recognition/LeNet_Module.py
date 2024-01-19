@@ -1,25 +1,38 @@
 from torch.nn import Module as Module_Base
 from torch import nn
 
+# define model parameters
+input_side_length = 28  # assume input image is square
+conv1_kernel_num = 6
+conv1_kernel_size = 5
+conv1_pool_size = 2
+conv2_kernel_num = 16
+conv2_kernel_size = 5
+conv2_pool_size = 2
+fc1_kernel_num = 120
+fc2_kernel_num = 84
+fc3_kernel_num = 10     # this can not be changed as it must equal to the number output classes
+
 class LeNet(Module_Base):
     # define internal methods inside the module
     def __init__(self):
         super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, 6, 5)
+        self.conv1 = nn.Conv2d(1, conv1_kernel_num, conv1_kernel_size)
         self.relu1 = nn.ReLU()
-        self.pool1 = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.pool1 = nn.MaxPool2d(conv1_pool_size)
+        self.conv2 = nn.Conv2d(conv1_kernel_num, conv2_kernel_num, conv2_kernel_size)
         self.relu2 = nn.ReLU()
-        self.pool2 = nn.MaxPool2d(2)
-        self.fc1 = nn.Linear(256, 120)
+        self.pool2 = nn.MaxPool2d(conv2_pool_size)
+        self.fc1 = nn.Linear(conv2_kernel_num * (int(((input_side_length - conv1_kernel_size + 1) / conv1_pool_size - conv2_kernel_size + 1) / conv2_pool_size) ** 2), fc1_kernel_num)
         self.relu3 = nn.ReLU()
-        self.fc2 = nn.Linear(120, 84)
+        self.fc2 = nn.Linear(fc1_kernel_num, fc2_kernel_num)
         self.relu4 = nn.ReLU()
-        self.fc3 = nn.Linear(84, 10)
+        self.fc3 = nn.Linear(fc2_kernel_num, fc3_kernel_num)
         self.relu5 = nn.ReLU()
     
     # define the execution of propagate forward 
     def forward(self, x):
+        # input feture is tensor [batchsize, # channel, height, width] = [256, 1, 28, 28]
         y = self.conv1(x)
         y = self.relu1(y)
         y = self.pool1(y)
@@ -34,3 +47,4 @@ class LeNet(Module_Base):
         y = self.fc3(y)
         y = self.relu5(y)
         return y
+    
