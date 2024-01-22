@@ -19,14 +19,14 @@ cd .\LeNet_Module_for_Digits_Recognition\
 python train.py
 ```
 
-## **Version: 0.0.2**
+## **Current Version: 0.0.2**
 ### Update Content:
 - Implement basic version of finding optimal architecture
 ### **Version: 0.0.10**
 ### Update Content:
 - Implement LeNet model for digits recognization
 - Implement of visualization of results
-### **Current Version: 0.0.05**
+### **Version: 0.0.05**
 ### Update Content:
 - Build Pytorch environment using anaconda and link it to VSCode
 - Link the local repository to the github remote repository
