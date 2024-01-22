@@ -9,15 +9,15 @@ Research Supervisor:
 
 ## To run it
 - in one terminal
-'''
+```
 python -m visdom.server
-'''
+```
 Then go to that local host to see the visualization of result
-- in another terminal
-'''
+- run train.py in another terminal
+```
 cd .\LeNet_Module_for_Digits_Recognition\
 python train.py
-'''
+```
 
 ## **Version: 0.0.2**
 ### Update Content:
