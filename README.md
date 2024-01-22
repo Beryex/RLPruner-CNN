@@ -4,9 +4,17 @@ Research Supervisor:
 [Kindratenko Volodymyr](https://cs.illinois.edu/about/people/faculty/kindrtnk) @ University of Illinois at Urbana-Champaign
 
 ## **To Do List**
-- build simple kernel
+- try to find optimal architecture during training epochs
+- try to find best initial value based on the score of all architecture
 
-## **Current Version: 0.0.05**
+## **Version: 0.0.2**
+### Update Content:
+- Implement basic version of finding optimal architecture
+### **Version: 0.0.10**
+### Update Content:
+- Implement LeNet model for digits recognization
+- Implement of visualization of results
+### **Current Version: 0.0.05**
 ### Update Content:
 - Build Pytorch environment using anaconda and link it to VSCode
 - Link the local repository to the github remote repository
