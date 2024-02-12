@@ -4,8 +4,8 @@ Research Supervisor:
 [Kindratenko Volodymyr](https://cs.illinois.edu/about/people/faculty/kindrtnk) @ University of Illinois at Urbana-Champaign
 
 ## **To Do List**
-- try to find optimal architecture during training epochs
-- try to find best initial value based on the score of all architecture
+- Add more features to LeNet.update_architecture
+- Try the algorithm on other neuron network models
 
 ## To run it
 - in one terminal
@@ -19,9 +19,15 @@ cd .\LeNet_Module_for_Digits_Recognition\
 python train.py
 ```
 
-## **Current Version: 0.0.2**
+## **Current Version: 0.1.0**
 ### Update Content:
-- Implement basic version of finding optimal architecture
+- Improve the algorithm to train architecture during training epochs on LeNet
+### **Version: 0.0.50**
+### Update Content:
+- Implement basic algorithm to update architecture during training epochs
+### **Version: 0.0.50**
+### Update Content:
+- Implement basic algorithm to test different architecture before training epochs
 ### **Version: 0.0.10**
 ### Update Content:
 - Implement LeNet model for digits recognization
