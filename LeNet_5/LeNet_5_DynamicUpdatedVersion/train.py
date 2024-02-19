@@ -28,13 +28,13 @@ def train_paperversion():
                     transform=transforms.Compose([
                         transforms.Resize((32, 32)),
                         transforms.ToTensor()]))
-    train_loader = DataLoader(data_train, batch_size=256, shuffle=True, num_workers=8)
-    test_loader = DataLoader(data_test, batch_size=1024, num_workers=8)
-    all_epoch = 1000
+    all_epoch = 64
     train_time = 10
     final_accuracies_list = []
     train_list = []
     for train_id in range(train_time):
+        train_loader = DataLoader(data_train, batch_size=256, shuffle=True, num_workers=8)
+        test_loader = DataLoader(data_test, batch_size=1024, shuffle=True, num_workers=8)
         train_list.append(train_id)
         model = LeNet().to(device)
         sgd = SGD(model.parameters(), lr=2e-2)
@@ -68,10 +68,13 @@ def train_paperversion():
             if not os.path.isdir("models"):
                 os.mkdir("models")
             torch.save(model, 'models/mnist_{:.3f}.pkl'.format(acc))
-            if np.abs(acc - prev_acc) < 1e-4 and current_epoch >= 40:
+            if np.abs(acc - prev_acc) < 1e-4 and current_epoch >= 20:
                 final_accuracies_list.append(acc)
                 print("Single training have %f top1 accuracy" %acc)
                 break
+            if current_correct_num == all_epoch - 1:
+                final_accuracies_list.append(acc)
+                print("Single training have %f top1 accuracy" %acc)
             prev_acc = acc
     # visualization
     if viz.check_connection():
@@ -95,8 +98,6 @@ def train_dynamic_architecture():
                     transform=transforms.Compose([
                         transforms.Resize((32, 32)),
                         transforms.ToTensor()]))
-    train_loader = DataLoader(data_train, batch_size=256, shuffle=True, num_workers=8)
-    test_loader = DataLoader(data_test, batch_size=1024, num_workers=8)
 
     # move the LeNet Module into the corresponding device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -104,16 +105,18 @@ def train_dynamic_architecture():
     # initialize the training parameters
     max_train_epoches_num = 1000
     global cur_batch_window
-    train_num = 10
-    generate_num = 4
-    dev_num = 8
-    update_architecture_period = 10
+    train_num = 1
+    generate_num = 5
+    dev_num = 15
     train_list = []
     final_accuracies_list = []
 
     for train_id in range(train_num):
+        train_loader = DataLoader(data_train, batch_size=256, shuffle=True, num_workers=8)
+        test_loader = DataLoader(data_test, batch_size=1024, shuffle=True, num_workers=8)
         train_list.append(train_id)
         prev_accuracy = 0
+        update_times = 7
         # reload the model each time
         model = LeNet().to(device)
         sgd = SGD(model.parameters(), lr = 1e-1)
@@ -124,15 +127,6 @@ def train_dynamic_architecture():
         display_accuracies_list = []
         for current_epoch_num in range(max_train_epoches_num):
             epoch_list.append(current_epoch_num)
-            # check and update architecture
-            if current_epoch_num != 0 and (current_epoch_num) % update_architecture_period == 0:
-                # find the potential best architecture\
-                model = copy.deepcopy(generate_architecture(model, local_top1_accuracy, local_top3_accuracy, generate_num, dev_num))
-                sgd = SGD(model.parameters(), lr = 1e-1)
-                local_top1_accuracy.clear()
-                local_top3_accuracy.clear()
-                # print model to help debug
-                print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
             
             # begin training
             model.train()               # set model into training
@@ -141,14 +135,14 @@ def train_dynamic_architecture():
                 # move train data to device
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
+                # clear the gradient data and update parameters based on error
+                sgd.zero_grad()
                 # get predict y and compute the error
                 predict_y = model(train_x.float())
                 loss = loss_function(predict_y, train_label.long())
                 # update visualization
                 loss_list.append(loss.detach().cpu().item())
                 batch_list.append(idx + 1)
-                # clear the gradient data and update parameters based on error
-                sgd.zero_grad()
                 loss.backward()
                 sgd.step()
             
@@ -173,20 +167,39 @@ def train_dynamic_architecture():
             top3_accuracy = top3_correct_num / test_sample_num
             display_accuracies_list.append(top1_accuracy)
             # discard the first 4 data
-            if (current_epoch_num + 1) % update_architecture_period >= math.ceil(update_architecture_period / 2):
-                local_top1_accuracy.append(top1_accuracy)
-                local_top3_accuracy.append(top3_accuracy)
+            local_top1_accuracy.append(top1_accuracy)
+            local_top3_accuracy.append(top3_accuracy)
             print('top1 accuracy: {:.3f}'.format(top1_accuracy), flush=True)
             print('top3 accuracy: {:.3f}'.format(top3_accuracy), flush=True)
-            # if accuracy is small enough, finish
-            if np.abs(top1_accuracy - prev_accuracy) < 1e-4 and current_epoch_num >= 40:
+            # check and update architecture
+            if np.abs(top1_accuracy - prev_accuracy) < 1e-4:
+                if update_times < 0:
+                    # save the module
+                    if not os.path.isdir("models"):
+                        os.mkdir("models")
+                    torch.save(model, 'models/mnist_{:d}.pkl'.format(train_id))
+                    final_accuracies_list.append(top1_accuracy)
+                    print("Single training have %f top1 accuracy using model with architexcture [%d, %d, %d, %d, %s, %s, %s, %s, %s]" %(top1_accuracy, model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, str(model.conv1_activation_func), str(model.conv2_activation_func), str(model.fc1_activation_func), str(model.fc2_activation_func), str(model.fc3_activation_func)))
+                    break
+                else:
+                    # otherwise, update architecture
+                    update_times -= 1
+                    # find the potential best architecture\
+                    model = copy.deepcopy(generate_architecture(model, local_top1_accuracy, local_top3_accuracy, generate_num, dev_num))
+                    sgd = SGD(model.parameters(), lr = 1e-1)
+                    local_top1_accuracy.clear()
+                    local_top3_accuracy.clear()
+                    # print model to help debug
+                    print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
+    
+            # if reach all epochs
+            if current_epoch_num == max_train_epoches_num - 1:
                 # save the module
                 if not os.path.isdir("models"):
                     os.mkdir("models")
-                torch.save(model, 'models/mnist_{:.3f}.pkl'.format(top1_accuracy))
+                torch.save(model, 'models/mnist_{:d}.pkl'.format(train_id))
                 final_accuracies_list.append(top1_accuracy)
                 print("Single training have %f top1 accuracy using model with architexcture [%d, %d, %d, %d, %s, %s, %s, %s, %s]" %(top1_accuracy, model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, str(model.conv1_activation_func), str(model.conv2_activation_func), str(model.fc1_activation_func), str(model.fc2_activation_func), str(model.fc3_activation_func)))
-                break
             prev_accuracy = top1_accuracy
     
         # visualization
@@ -211,8 +224,6 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
                     transform=transforms.Compose([
                         transforms.Resize((32, 32)),
                         transforms.ToTensor()]))
-    train_loader = DataLoader(data_train, batch_size=256, shuffle=True, num_workers=8)
-    test_loader = DataLoader(data_test, batch_size=1024, num_workers=8)
     # move the LeNet Module into the corresponding device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -232,13 +243,16 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
 
     original_model = copy.deepcopy(model)
     for model_id in range(generate_num):
+        train_loader = DataLoader(data_train, batch_size=256, shuffle=True, num_workers=8)
+        test_loader = DataLoader(data_test, batch_size=1024, shuffle=True, num_workers=8)
         # generate architecture
         dev_model = copy.deepcopy(original_model)
         LeNet.update_architecture(dev_model)
         dev_model = dev_model.to(device)
-        sgd = SGD(dev_model.parameters(), lr = 2e-2)
+        sgd = SGD(dev_model.parameters(), lr = 1e-1)
         dev_top1_accuracies = []
         dev_top3_accuracies = []
+        print("Train potential model with [%d, %d, %d, %d, %s, %s, %s, %s, %s]" %(dev_model.conv1.out_channels, dev_model.conv2.out_channels, dev_model.fc1.out_features, dev_model.fc2.out_features, str(dev_model.conv1_activation_func), str(dev_model.conv2_activation_func), str(dev_model.fc1_activation_func), str(dev_model.fc2_activation_func), str(dev_model.fc3_activation_func)))
         # train the architecture for dev_num times
         for dev_id in range(dev_num):
             # begin training
@@ -248,14 +262,14 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
                 # move train data to device
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
+                # clear the gradient data and update parameters based on error
+                sgd.zero_grad()
                 # get predict y and compute the error
-                predict_y = model(train_x.float())
+                predict_y = dev_model(train_x.float())
                 loss = loss_function(predict_y, train_label.long())
                 # update visualization
                 loss_list.append(loss.detach().cpu().item())
                 batch_list.append(idx + 1)
-                # clear the gradient data and update parameters based on error
-                sgd.zero_grad()
                 loss.backward()
                 sgd.step()
             
@@ -271,7 +285,7 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
                 test_x = test_x.to(device)
                 test_label = test_label.to(device)
                 # get predict y and predict its class
-                predict_y = model(test_x.float()).detach()
+                predict_y = dev_model(test_x.float()).detach()
                 top1_correct_num += topk_correct_num(predict_y, test_label, 1)
                 top3_correct_num += topk_correct_num(predict_y, test_label, 3)
                 test_sample_num += test_label.size(0)
@@ -296,22 +310,24 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
 
 
 def compute_score(model_list, top1_accuracy_list, top3_accuracy_list, FLOPs_list, parameter_num_list):
+    print(top1_accuracy_list)
     score_list = []
     # use softmax to process the FLOPs_list and parameter_num_list
     FLOPs_tensor = torch.tensor(FLOPs_list)
     parameter_num_tensor = torch.tensor(parameter_num_list)
-    FLOPs_softmax = torch.square(FLOPs_tensor) / torch.sum(torch.square(FLOPs_tensor), dim = 0, keepdim = True)
-    parameter_num_softmax = torch.square(parameter_num_tensor) / torch.sum(torch.square(parameter_num_tensor), dim = 0, keepdim = True)
-    print(FLOPs_softmax)
+    FLOPs_scaled = (FLOPs_tensor - torch.min(FLOPs_tensor)) / (torch.max(FLOPs_tensor) - torch.min(FLOPs_tensor))
+    parameter_num_scaled = (parameter_num_tensor - torch.min(parameter_num_tensor)) / (torch.max(parameter_num_tensor) - torch.min(parameter_num_tensor))
     for model_id in range(len(model_list)):
         top1_accuracy = top1_accuracy_list[model_id]
         top3_accuracy = top3_accuracy_list[model_id]
-        top1_accuracy = sum(top1_accuracy) / len(top1_accuracy)
-        top3_accuracy = sum(top3_accuracy) / len(top3_accuracy)
-        if torch.rand(1).item() < 0.5:
-            score_list.append(top1_accuracy * 0.8 +  top3_accuracy * 0.1 + 0.1 - FLOPs_softmax[model_id] * 0.05 - parameter_num_softmax[model_id] * 0.05)
+        top1_accuracy = top1_accuracy[len(top1_accuracy) - 1]
+        top3_accuracy = top3_accuracy[len(top3_accuracy) - 1]
+        if top1_accuracy > 0.95:
+            score_list.append(top1_accuracy * 0.5 +  0.5 - FLOPs_scaled[model_id] * 0.25 - parameter_num_scaled[model_id] * 0.25)
         else:
             score_list.append(top1_accuracy * 0.9 +  top3_accuracy * 0.1)
+    print(FLOPs_scaled)
+    print(score_list)
     return score_list
     
 

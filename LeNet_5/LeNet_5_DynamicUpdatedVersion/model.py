@@ -13,10 +13,11 @@ conv1_pool_size = 2
 conv2_kernel_size = 5
 conv2_pool_size = 2
 fc3_kernel_num = 10     # this can not be changed as it must equal to the number output classes
-prune_probability = 0.7
+prune_probability = 1
 kernel_proportion = 3 / 8
 neuron_proportion = 2 / 3
 update_activitation_probability = 0.7
+max_modification_num = 10
 
 class LeNet(Module_Base):
     # define internal methods inside the module
@@ -128,21 +129,25 @@ class LeNet(Module_Base):
 
     # define the function to resize the architecture kernel number
     def update_architecture(self):
+        update_times = torch.randint(low=int(max_modification_num / 3), high=max_modification_num + 1, size=(1,))
         if torch.rand(1).item() < prune_probability:
-            if torch.rand(1).item() < 0.3:
-                self.prune_kernel()
-            if torch.rand(1).item() > 0.3:
-                self.prune_neuron()
+            for update_id in range(update_times):
+                if torch.rand(1).item() < 0.10:
+                    self.prune_kernel()
+                if torch.rand(1).item() > 0.10:
+                    self.prune_neuron()
         else:
-            if torch.rand(1).item() < 0.3:
-                self.add_kernel()
-            if torch.rand(1).item() > 0.3:
-                self.add_neuron()
+            for update_id in range(update_times):
+                if torch.rand(1).item() < 0.10:
+                    self.add_kernel()
+                if torch.rand(1).item() > 0.10:
+                    self.add_neuron()
         if torch.rand(1).item() < update_activitation_probability:
             self.change_activation_function()
 
+
     def prune_kernel(self):
-        if torch.rand(1).item() < kernel_proportion:
+        if torch.rand(1).item() < kernel_proportion and self.conv1.out_channels - 1 > 0:
             new_conv1_kernel_num = self.conv1.out_channels - 1
             # update conv1
             new_conv1 = nn.Conv2d(self.conv1.in_channels, new_conv1_kernel_num, conv1_kernel_size)
@@ -163,6 +168,8 @@ class LeNet(Module_Base):
             self.conv2 = new_conv2
         else:
             new_conv2_kernel_num = self.conv2.out_channels - 1
+            if new_conv2_kernel_num == 0:
+                return
             # new_fc1_kernel_num = math.ceil(new_conv2_kernel_num * (int(((input_side_length - conv1_kernel_size + 1) / conv1_pool_size - conv2_kernel_size + 1) / conv2_pool_size) ** 2) / 2)
             # update conv2
             new_conv2 = nn.Conv2d(self.conv1.out_channels, new_conv2_kernel_num, conv2_kernel_size)
@@ -187,7 +194,7 @@ class LeNet(Module_Base):
     
 
     def prune_neuron(self):
-        if torch.rand(1).item() < neuron_proportion:
+        if torch.rand(1).item() < neuron_proportion and self.fc1.out_features - 1 > 0:
             new_fc1_output_features = self.fc1.out_features - 1
             # update fc1
             new_fc1 = nn.Linear(self.fc1.in_features, new_fc1_output_features)
@@ -207,6 +214,8 @@ class LeNet(Module_Base):
             self.fc2 = new_fc2
         else:
             new_fc2_output_features = self.fc2.out_features - 1
+            if new_fc2_output_features == 0:
+                return
             # update fc2
             new_fc2 = nn.Linear(self.fc2.in_features, new_fc2_output_features)
             # prune the neuron with least variance weights
@@ -318,20 +327,6 @@ class LeNet(Module_Base):
                 new_fc3.weight.data = torch.cat((self.fc3.weight.data, weight_mean), dim=1)
                 new_fc3.bias.data = self.fc3.bias.data
             self.fc3 = new_fc3
-
-
-    # define the helper function
-    def get_weights(self):
-        cur_weights = []
-        cur_weights.append(self.conv1.weight.data)
-        cur_weights.append(self.conv2.weight.data)
-        return cur_weights
-    
-    def get_bias(self):
-        cur_bias = []
-        cur_bias.append(self.conv1.bias.data)
-        cur_bias.append(self.conv2.bias.data)
-        return cur_bias
     
     # define evaluating method
     def get_FLOPs(self):

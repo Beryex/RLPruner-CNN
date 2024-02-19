@@ -158,7 +158,7 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
                 # get predict y and compute the error
-                predict_y = model(train_x.float())
+                predict_y = dev_model(train_x.float())
                 loss = loss_function(predict_y, train_label.long())
                 # update visualization
                 loss_list.append(loss.detach().cpu().item())
@@ -180,7 +180,7 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
                 test_x = test_x.to(device)
                 test_label = test_label.to(device)
                 # get predict y and predict its class
-                predict_y = model(test_x.float()).detach()
+                predict_y = dev_model(test_x.float()).detach()
                 top1_correct_num += topk_correct_num(predict_y, test_label, 1)
                 top3_correct_num += topk_correct_num(predict_y, test_label, 3)
                 test_sample_num += test_label.size(0)
