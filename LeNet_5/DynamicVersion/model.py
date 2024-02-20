@@ -17,7 +17,7 @@ prune_probability = 1
 kernel_proportion = 3 / 8
 neuron_proportion = 2 / 3
 update_activitation_probability = 0.7
-max_modification_num = 10
+max_modification_num = 10   # for each update, at most how many kernels/neurons are we deleting/adding
 
 class LeNet(Module_Base):
     # define internal methods inside the module
@@ -27,8 +27,6 @@ class LeNet(Module_Base):
         self.pool1 = nn.MaxPool2d(conv1_pool_size)
         self.conv2 = nn.Conv2d(conv1_kernel_num_i, conv2_kernel_num_i, conv2_kernel_size)
         self.pool2 = nn.MaxPool2d(conv2_pool_size)
-        fc1_kernel_num = math.ceil(conv2_kernel_num_i * (int(((input_side_length - conv1_kernel_size + 1) / conv1_pool_size - conv2_kernel_size + 1) / conv2_pool_size) ** 2) / 2)
-        fc2_kernel_num = math.ceil(conv2_kernel_num_i * (int(((input_side_length - conv1_kernel_size + 1) / conv1_pool_size - conv2_kernel_size + 1) / conv2_pool_size) ** 2) / 3)
         fc1_input_features = conv2_kernel_num_i * (int(((input_side_length - conv1_kernel_size + 1) / conv1_pool_size - conv2_kernel_size + 1) / conv2_pool_size) ** 2)
         self.fc1 = nn.Linear(400, 120)
         self.fc2 = nn.Linear(120, 84)

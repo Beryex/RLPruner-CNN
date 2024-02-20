@@ -32,7 +32,7 @@ def test():
     test_sample_num = 0
 
     # begin testing
-    model = torch.load('models/mnist_0.pkl')
+    model = torch.load('models/mnist_4.pkl')
     model = model.to(device)
     model.eval()
     with torch.no_grad():
@@ -48,6 +48,12 @@ def test():
         # calculate the accuracy and print it
         top1_accuracy = top1_correct_num / test_sample_num
         top3_accuracy = top3_correct_num / test_sample_num
+        print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
+        print(model.conv1.weight.shape)
+        print(model.conv2.weight.shape)
+        print(model.fc1.weight.shape)
+        print(model.fc2.weight.shape)
+        print(model.fc3.weight.shape)
         print('model 0 has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
 
 
