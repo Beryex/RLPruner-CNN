@@ -21,11 +21,11 @@ conv1_pool_size = 2
 conv2_kernel_size = 3
 conv2_pool_size = 2
 fc3_kernel_num = 10     # this can not be changed as it must equal to the number output classes
-prune_probability = 0.5
-kernel_proportion = 3 / 8
+prune_probability = 1
+kernel_neuron_proportion = 0.7
 neuron_proportion = 0.5
-update_activitation_probability = 0.7
-max_update_times = 100
+update_activitation_probability = 0.5
+max_modification_num = 500
 
 cfg = {
     'A' : [64,     'M', 128,      'M', 256, 256,           'M', 512, 512,           'M', 512, 512,           'M'],
@@ -146,95 +146,29 @@ class VGG(nn.Module):
         return output
 
 
-    '''# update the conv1 activation function
-    def change_activation_function(self):
-        p1 = torch.rand(1).item()
-        p2 = torch.rand(1).item()
-        if p1 < 0.2:
-            # change conv1
-            if p2 < 0.2:
-                self.conv1_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.conv1_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.conv1_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.conv1_activation_func = torch.nn.Sigmoid()
-            else:
-                self.conv1_activation_func = torch.nn.ELU()
-        elif p1 < 0.4:
-            # change conv2
-            if p2 < 0.2:
-                self.conv2_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.conv2_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.conv2_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.conv2_activation_func = torch.nn.Sigmoid()
-            else:
-                self.conv2_activation_func = torch.nn.ELU()
-        elif p1 < 0.6:
-            # change fc1
-            if p2 < 0.2:
-                self.fc1_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.fc1_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.fc1_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.fc1_activation_func = torch.nn.Sigmoid()
-            else:
-                self.fc1_activation_func = torch.nn.ELU()
-        elif p1 < 0.8:
-            # change fc2
-            if p2 < 0.2:
-                self.fc2_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.fc2_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.fc2_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.fc2_activation_func = torch.nn.Sigmoid()
-            else:
-                self.fc2_activation_func = torch.nn.ELU()
-        else:
-            # change fc3
-            if p2 < 0.2:
-                self.fc3_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.fc3_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.fc3_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.fc3_activation_func = torch.nn.Sigmoid()
-            else:
-                self.fc3_activation_func = torch.nn.ELU()'''
-
-
-
     # define the function to resize the architecture kernel number
     def update_architecture(self):
-        update_times = torch.randint(low=int(max_update_times / 3), high=max_update_times + 1, size=(1,))
+        update_times = torch.randint(low=int(max_modification_num / 3), high=max_modification_num + 1, size=(1,))
         if torch.rand(1).item() < prune_probability:
             for update_id in range(update_times):
-                if torch.rand(1).item() < 0.20:
+                if torch.rand(1).item() < kernel_neuron_proportion:
                     self.prune_kernel()
-                if torch.rand(1).item() > 0.20:
+                if torch.rand(1).item() > kernel_neuron_proportion:
                     self.prune_neuron()
         else:
             for update_id in range(update_times):
-                if torch.rand(1).item() < 0.20:
+                if torch.rand(1).item() < kernel_neuron_proportion:
                     self.add_kernel()
-                if torch.rand(1).item() > 0.20:
+                if torch.rand(1).item() > kernel_neuron_proportion:
                     self.add_neuron()
-        #if torch.rand(1).item() < update_activitation_probability:
-            #self.change_activation_function()
+        if torch.rand(1).item() < update_activitation_probability:
+            self.change_activation_function()
 
 
     def prune_kernel(self):
-        conv_num = 12 # exclude the final convolutional layer
+        conv_num = 13
         target_layer = torch.randint(low=1, high=conv_num + 1, size=(1,)).item()
+
         new_conv1_kernel_num = self.features['Conv' + str(target_layer)].out_channels - 1
         if new_conv1_kernel_num == 0:
             return
@@ -258,13 +192,27 @@ class VGG(nn.Module):
             new_bn1.running_var = self.features['bn' + str(target_layer)].running_var[kept_indices]
         self.features['bn' + str(target_layer)] = new_bn1
 
-        # update conv2
-        new_conv2 = nn.Conv2d(self.features['Conv' + str(target_layer)].out_channels, self.features['Conv' + str(target_layer + 1)].out_channels, kernel_size=3, padding=1)
-        with torch.no_grad():
-            kept_indices = [i for i in range(self.features['Conv' + str(target_layer + 1)].in_channels) if i != target_kernel]
-            new_conv2.weight.data = self.features['Conv' + str(target_layer + 1)].weight.data[:, kept_indices, :, :]
-            new_conv2.bias.data = self.features['Conv' + str(target_layer + 1)].bias.data
-        self.features['Conv' + str(target_layer + 1)] = new_conv2
+        if target_layer < 13:
+            # if not last Conv layer, update conv2
+            new_conv2 = nn.Conv2d(self.features['Conv' + str(target_layer)].out_channels, self.features['Conv' + str(target_layer + 1)].out_channels, kernel_size=3, padding=1)
+            with torch.no_grad():
+                kept_indices = [i for i in range(self.features['Conv' + str(target_layer + 1)].in_channels) if i != target_kernel]
+                new_conv2.weight.data = self.features['Conv' + str(target_layer + 1)].weight.data[:, kept_indices, :, :]
+                new_conv2.bias.data = self.features['Conv' + str(target_layer + 1)].bias.data
+            self.features['Conv' + str(target_layer + 1)] = new_conv2
+        else:
+            # if so, update first FC layer
+            new_fc1_intput_features = self.features['Conv' + str(target_layer)].out_channels
+            # update fc1
+            new_fc1 = nn.Linear(new_fc1_intput_features, self.classifier[0].out_features)
+            output_length = 1 # gained by printing "output"
+            # prune the neuron with least variance weights
+            with torch.no_grad():
+                start_index = target_kernel * output_length ** 2
+                end_index = start_index + output_length ** 2
+                new_fc1.weight.data = torch.cat([self.classifier[0].weight.data[:, :start_index], self.classifier[0].weight.data[:, end_index:]], dim=1)
+                new_fc1.bias.data = self.classifier[0].bias.data
+            self.classifier[0] = new_fc1
     
 
     def prune_neuron(self):
@@ -387,3 +335,44 @@ class VGG(nn.Module):
                 new_fc3.bias.data = self.classifier[6].bias.data
             self.classifier[6] = new_fc3
     
+
+    # update the conv1 activation function
+    def change_activation_function(self):
+        activation_funcs = 15
+        target_layer = torch.randint(low=1, high=activation_funcs + 1, size=(1,)).item()
+        p1 = torch.rand(1).item()
+        if target_layer <= 13:
+            # change convolution layer
+            if p1 < 0.2:
+                self.features['activation' + str(target_layer)] = torch.nn.ReLU(inplace=True)
+            elif p1 < 0.4:
+                self.features['activation' + str(target_layer)] = torch.nn.Tanh()
+            elif p1 < 0.6:
+                self.features['activation' + str(target_layer)] = torch.nn.LeakyReLU(inplace=True)
+            elif p1 < 0.8:
+                self.features['activation' + str(target_layer)] = torch.nn.Sigmoid()
+            else:
+                self.features['activation' + str(target_layer)] = torch.nn.ELU(inplace=True)
+        elif target_layer == 14:
+            # change fully connection layer
+            if p1 < 0.2:
+                self.classifier[1] = torch.nn.ReLU(inplace=True)
+            elif p1 < 0.4:
+                self.classifier[1] = torch.nn.Tanh()
+            elif p1 < 0.6:
+                self.classifier[1] = torch.nn.LeakyReLU(inplace=True)
+            elif p1 < 0.8:
+                self.classifier[1] = torch.nn.Sigmoid()
+            else:
+                self.classifier[1] = torch.nn.ELU(inplace=True)
+        else:
+            if p1 < 0.2:
+                self.classifier[4] = torch.nn.ReLU(inplace=True)
+            elif p1 < 0.4:
+                self.classifier[4] = torch.nn.Tanh()
+            elif p1 < 0.6:
+                self.classifier[4] = torch.nn.LeakyReLU(inplace=True)
+            elif p1 < 0.8:
+                self.classifier[4] = torch.nn.Sigmoid()
+            else:
+                self.classifier[4] = torch.nn.ELU(inplace=True)

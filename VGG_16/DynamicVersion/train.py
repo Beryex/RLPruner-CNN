@@ -29,7 +29,17 @@ from utils import get_network, get_training_dataloader, get_test_dataloader, War
 import copy
 import math
 from models.vgg import VGG
+import models.vgg
 from thop import profile
+
+
+# global hyperparameter
+train_num = 5               # how many training we are going to take
+generate_num = 3            # for each updates, how many potential architecture we are going to generate
+dev_num = 20                # for each potential architecture, how many epochs we are going to train it
+accuracy_threshold = 0.7    # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
+max_tolerance_times = 3     # for each training, how many updates we are going to apply before we get the final architecture
+
 
 def train(epoch):
 
@@ -65,7 +75,6 @@ def eval_training(epoch=0, tb=True):
     net.eval()
 
     test_loss = 0.0 # cost function error
-    correct = 0.0
     correct_1 = 0.0
     correct_5 = 0.0
 
@@ -80,13 +89,11 @@ def eval_training(epoch=0, tb=True):
 
         test_loss += loss.item()
         _, preds = outputs.topk(5, 1, largest=True, sorted=True)
-        labels = labels.view(labels.size(0), -1).expand_as(preds)
-        correct = preds.eq(labels).float()
-        #compute top 5
-        correct_5 += correct[:, :5].sum()
-
         #compute top1
-        correct_1 += correct[:, :1].sum()
+        correct_1 += (preds[:, :1] == labels.unsqueeze(1)).sum().item()
+        #compute top 5
+        top5_correct = labels.view(-1, 1).expand_as(preds) == preds
+        correct_5 += top5_correct.any(dim=1).sum().item()
 
     finish = time.time()
     print('Evaluating Network.....')
@@ -127,11 +134,17 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
         dev_model = copy.deepcopy(original_model)
         VGG.update_architecture(dev_model)
         dev_model = dev_model.to(device)
-        sgd = optim.SGD(dev_model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+        dev_lr = args.lr
+        dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
         dev_top1_accuracies = []
         dev_top5_accuracies = []
         # train the architecture for dev_num times
-        for dev_id in range(dev_num):
+        for dev_id in range(1, dev_num + 1):
+            if dev_id == 6 or dev_id == 13 or dev_id == 18:
+                dev_lr *= gamma
+                for param_group in dev_optimizer.param_groups:
+                    param_group['lr'] = dev_lr
+                print(dev_lr)
             # begin training
             dev_model.train()               # set model into training
             for idx, (train_x, train_label) in enumerate(cifar100_training_loader):
@@ -139,13 +152,13 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
                 # clear the gradient data and update parameters based on error
-                sgd.zero_grad()
+                dev_optimizer.zero_grad()
                 # get predict y and compute the error
                 predict_y = dev_model(train_x)
                 loss = loss_function(predict_y, train_label)
                 # update visualization
                 loss.backward()
-                sgd.step()
+                dev_optimizer.step()
             
             # initialize the testing parameters
             correct_1 = 0.0
@@ -160,14 +173,11 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 # get predict y and predict its class
                 outputs = dev_model(test_x)
                 _, preds = outputs.topk(5, 1, largest=True, sorted=True)
-                test_label = test_label.view(test_label.size(0), -1).expand_as(preds)
-                correct = preds.eq(test_label).float()
-
-                #compute top 5
-                correct_5 += correct[:, :5].sum()
-
                 #compute top1
-                correct_1 += correct[:, :1].sum()
+                correct_1 += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
+                #compute top 5
+                top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
+                correct_5 += top5_correct.any(dim=1).sum().item()
             # calculate the accuracy and print it
             top1_accuracy = correct_1 / len(cifar100_test_loader.dataset)
             top5_accuracy = correct_5 / len(cifar100_test_loader.dataset)
@@ -189,26 +199,33 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
     print("model %d wins" %best_model_index)
     print(model.features)
     print(model.classifier)
-    return model
+    print(model.features['Conv6'].weight.shape)
+    print(model.classifier[3].weight.shape)
+    return model, best_model_index
 
 
 def compute_score(model_list, top1_accuracy_list, top3_accuracy_list, FLOPs_list, parameter_num_list):
     print(top1_accuracy_list)
     score_list = []
-    # use softmax to process the FLOPs_list and parameter_num_list
+    # extract the last element (converged) accuracy to denote that architecture's accuracy
+    top1_accuracies = [sublist[-1] for sublist in top1_accuracy_list]
+    top3_accuracies = [sublist[-1] for sublist in top3_accuracy_list]
+    # use Min-Max Normalization to process the FLOPs_list and parameter_num_list
     FLOPs_tensor = torch.tensor(FLOPs_list)
     parameter_num_tensor = torch.tensor(parameter_num_list)
     FLOPs_scaled = (FLOPs_tensor - torch.min(FLOPs_tensor)) / (torch.max(FLOPs_tensor) - torch.min(FLOPs_tensor))
     parameter_num_scaled = (parameter_num_tensor - torch.min(parameter_num_tensor)) / (torch.max(parameter_num_tensor) - torch.min(parameter_num_tensor))
     for model_id in range(len(model_list)):
-        top1_accuracy = top1_accuracy_list[model_id]
-        top3_accuracy = top3_accuracy_list[model_id]
-        top1_accuracy = top1_accuracy[len(top1_accuracy) - 1]
-        top3_accuracy = top3_accuracy[len(top3_accuracy) - 1]
-        if top1_accuracy > 0.95:
-            score_list.append(top1_accuracy.item() * 0.5 +  0.5 - FLOPs_scaled[model_id].item() * 0.25 - parameter_num_scaled[model_id].item() * 0.25)
+        top1_accuracy = top1_accuracies[model_id]
+        top3_accuracy = top3_accuracies[model_id]
+        if np.max(top1_accuracies) > accuracy_threshold:
+            # if there exists architecture that is higher than accuracy_threshold, only pick the simplest one and discard other
+            if (top1_accuracy > accuracy_threshold - 0.005):
+                score_list.append(top1_accuracy * 0.5 +  0.5 - FLOPs_scaled[model_id].item() * 0.25 - parameter_num_scaled[model_id].item() * 0.25)
+            else:
+                score_list.append(0)
         else:
-            score_list.append(top1_accuracy.item() * 0.9 +  top3_accuracy.item() * 0.1)
+            score_list.append(top1_accuracy * 0.9 +  top3_accuracy * 0.1)
     print(FLOPs_scaled)
     print(score_list)
     return score_list
@@ -226,6 +243,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     net = get_network(args)
+    current_lr = args.lr
+
+    # reinitialize random seed
+    current_time = int(time.time())
+    torch.manual_seed(current_time)
+    print('Start with random seed %d' %current_time)
+    tolerance_times = max_tolerance_times
 
     #data preprocessing:
     cifar100_training_loader = get_training_dataloader(
@@ -245,12 +269,9 @@ if __name__ == '__main__':
     )
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
     iter_per_epoch = len(cifar100_training_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * args.warm)
-
-    generate_num = 5
-    dev_num = 10
 
     if args.resume:
         recent_folder = most_recent_folder(os.path.join(settings.CHECKPOINT_PATH, args.net), fmt=settings.DATE_FORMAT)
@@ -295,9 +316,10 @@ if __name__ == '__main__':
     for epoch in range(1, settings.EPOCH + 1):
         gamma = 0.2
         if epoch in settings.MILESTONES:
+            current_lr *= gamma
             for param_group in optimizer.param_groups:
-                param_group['lr'] *= gamma
-            args.lr *= gamma
+                param_group['lr'] = current_lr
+            print(current_lr)
 
         if args.resume:
             if epoch <= resume_epoch:
@@ -307,25 +329,27 @@ if __name__ == '__main__':
         top1_acc, top5_acc = eval_training(epoch)
 
         # dynamic generate architecture
-        if epoch % 30 == 0:
-            net = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc], generate_num, dev_num))
-            sgd = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-            print(args.lr)
+        if epoch >= 100 and epoch % 10 == 0:
+            if tolerance_times > 0:
+                net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc], generate_num, dev_num))
+                if model_index == 0:
+                    tolerance_times -= 1
+                    models.vgg.max_modification_num -= 100
+                    generate_num += 1
+                    models.vgg.kernel_neuron_proportion *= 0.6
+                optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
+                print(current_lr)
+            else:
+                # save the module
+                if not os.path.isdir("models"):
+                    os.mkdir("models")
+                torch.save(net, 'models/vgg_{:d}.pkl'.format(current_time))
+                break
 
 
-        #start to save best performance model after learning rate decay to 0.01
-        if epoch > settings.MILESTONES[1] and best_acc < top1_acc:
+        # save the model when training end
+        if epoch == settings.EPOCH:
             # save the module
             if not os.path.isdir("models"):
                 os.mkdir("models")
-            torch.save(net, 'models/vgg_{:d}.pkl'.format(0))
-            weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='best')
-            print('saving weights file to {}'.format(weights_path))
-            torch.save(net.state_dict(), weights_path)
-            best_acc = top1_acc
-            continue
-
-        if not epoch % settings.SAVE_EPOCH:
-            weights_path = checkpoint_path.format(net=args.net, epoch=epoch, type='regular')
-            print('saving weights file to {}'.format(weights_path))
-            torch.save(net.state_dict(), weights_path)
+            torch.save(net, 'models/vgg_{:d}.pkl'.format(current_time))
