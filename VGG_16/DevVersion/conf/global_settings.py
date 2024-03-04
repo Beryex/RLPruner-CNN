@@ -19,11 +19,7 @@ CIFAR100_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.2761504713256840
 CHECKPOINT_PATH = 'checkpoint'
 
 #total training epoches
-<<<<<<< HEAD:VGG_16/DevVersion/conf/global_settings.py
-EPOCH = 130
-=======
 EPOCH = 300
->>>>>>> 0dd8a320783e68dd14a5e93ce12bc78cdaf71e58:VGG_16/DynamicVersion/conf/global_settings.py
 MILESTONES = [40, 80, 100]
 
 #initial learning rate

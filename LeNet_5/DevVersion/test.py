@@ -21,6 +21,7 @@ from torch import nn
 import matplotlib.pyplot as plt
 from thop import profile
 import sys
+import time
 
 # move the LeNet Module into the corresponding device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -108,8 +109,10 @@ def test():
 
     original_para_num = 0.0
     original_FLOPs_num = 0.0
+    original_running_time = 0.0
     compressed_para_num = 0.0
     compressed_FLOPs_num = 0.0
+    compressed_running_time = 0.0
     input = torch.rand(256, 1, 32, 32).to(device)
 
     # initialize the testing parameters
@@ -119,6 +122,7 @@ def test():
     # begin testing
     model = torch.load('models/LeNet_Original_1709418891.pkl')
     model = model.to(device)
+    start = time.time()
     model.eval()
     with torch.no_grad():
         for idx, (test_x, test_label) in enumerate(test_loader):
@@ -132,16 +136,18 @@ def test():
             top3_correct = test_label.view(-1, 1).expand_as(preds) == preds
             top3_correct_num += top3_correct.any(dim=1).sum().item()
         # calculate the accuracy and print it
-        top1_accuracy = top1_correct_num / len(test_loader.dataset)
-        top3_accuracy = top3_correct_num / len(test_loader.dataset)
-        print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
-        print(model.conv1.weight.shape)
-        print(model.conv2.weight.shape)
-        print(model.fc1.weight.shape)
-        print(model.fc2.weight.shape)
-        print(model.fc3.weight.shape)
-        print('Original model has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
-        original_FLOPs_num, original_para_num = profile(model, inputs = (input, ), verbose=False)
+    finish = time.time()
+    original_running_time = finish - start
+    top1_accuracy = top1_correct_num / len(test_loader.dataset)
+    top3_accuracy = top3_correct_num / len(test_loader.dataset)
+    print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
+    print(model.conv1.weight.shape)
+    print(model.conv2.weight.shape)
+    print(model.fc1.weight.shape)
+    print(model.fc2.weight.shape)
+    print(model.fc3.weight.shape)
+    print('Original model has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
+    original_FLOPs_num, original_para_num = profile(model, inputs = (input, ), verbose=False)
         
     
     # initialize the testing parameters
@@ -151,6 +157,7 @@ def test():
     # begin testing
     model = torch.load('models/LeNet_Compressed_1708791769.pkl')
     model = model.to(device)
+    start = time.time()
     model.eval()
     with torch.no_grad():
         for idx, (test_x, test_label) in enumerate(test_loader):
@@ -163,22 +170,25 @@ def test():
             top1_correct_num += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
             top3_correct = test_label.view(-1, 1).expand_as(preds) == preds
             top3_correct_num += top3_correct.any(dim=1).sum().item()
-        # calculate the accuracy and print it
-        top1_accuracy = top1_correct_num / len(test_loader.dataset)
-        top3_accuracy = top3_correct_num / len(test_loader.dataset)
-        print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
-        print(model.conv1.weight.shape)
-        print(model.conv2.weight.shape)
-        print(model.fc1.weight.shape)
-        print(model.fc2.weight.shape)
-        print(model.fc3.weight.shape)
-        print('Compressed Model has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
-        compressed_FLOPs_num, compressed_para_num = profile(model, inputs = (input, ), verbose=False)
+    finish = time.time()
+    compressed_running_time = finish - start
+    # calculate the accuracy and print it
+    top1_accuracy = top1_correct_num / len(test_loader.dataset)
+    top3_accuracy = top3_correct_num / len(test_loader.dataset)
+    print('%d, %d, %d, %d, %d' %(model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, model.fc3.out_features))
+    print(model.conv1.weight.shape)
+    print(model.conv2.weight.shape)
+    print(model.fc1.weight.shape)
+    print(model.fc2.weight.shape)
+    print(model.fc3.weight.shape)
+    print('Compressed Model has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
+    compressed_FLOPs_num, compressed_para_num = profile(model, inputs = (input, ), verbose=False)
     
     # get compressed ratio
     FLOPs_compressed_ratio = compressed_FLOPs_num / original_FLOPs_num
     Para_compressed_ratio = compressed_para_num / original_para_num
-    print('We achieve FLOPS compressed ratio: %f, parameter number compressed ratio: %f' %(FLOPs_compressed_ratio, Para_compressed_ratio))
+    running_time_ratio = compressed_running_time / original_running_time
+    print('We achieve FLOPS compressed ratio: %f, parameter number compressed ratio: %f, running time compressed ratio: %f' %(FLOPs_compressed_ratio, Para_compressed_ratio, running_time_ratio))
 
 if __name__ == '__main__':
     '''test_data = datasets.MNIST(root="./uncompressed_data/", train=False, download=True)

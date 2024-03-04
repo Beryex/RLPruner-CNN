@@ -1,5 +1,4 @@
 import os
-import argparse
 import time
 
 import numpy as np
@@ -16,11 +15,12 @@ import math
 from models.googlenet import GoogleNet
 import models.googlenet
 from thop import profile
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 # global hyperparameter
 train_num = 5               # how many training we are going to take
-generate_num = 3            # for each updates, how many potential architecture we are going to generate
+generate_num = 2            # for each updates, how many potential architecture we are going to generate
 dev_num = 20                # for each potential architecture, how many epochs we are going to train it
 accuracy_threshold = 0.7    # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
 max_tolerance_times = 3     # for each training, how many updates we are going to apply before we get the final architecture
@@ -118,7 +118,6 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 dev_lr *= gamma
                 for param_group in dev_optimizer.param_groups:
                     param_group['lr'] = dev_lr
-                print(dev_lr)
             # begin training
             dev_model.train()               # set model into training
             for idx, (train_x, train_label) in enumerate(cifar100_training_loader):
@@ -171,10 +170,9 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
     best_model_index = np.argmax(score_list)
     model = copy.deepcopy(model_list[best_model_index])
     print("model %d wins" %best_model_index)
-    print(model.features)
-    print(model.classifier)
-    print(model.features['Conv6'].weight.shape)
-    print(model.classifier[3].weight.shape)
+    print(model.prelayer[3].weight.shape)
+    print(model.a5.b3[3].weight.shape)
+    print(model.linear.weight.shape)
     return model, best_model_index
 
 
@@ -209,7 +207,7 @@ if __name__ == '__main__':
     # move the LeNet Module into the corresponding device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    lr = 0.1
+    lr = 0.1 * 0.2 * 0.2 * 0.2
     warm = 1
     batch_size = 128
 
@@ -221,7 +219,8 @@ if __name__ == '__main__':
     tolerance_times = max_tolerance_times
     current_lr = lr
 
-    net = GoogleNet().to(device)
+    net = torch.load('models/GoogleNet_Compressed_1709492876.pkl')
+    net = net.to(device)
 
     #data preprocessing:
     cifar100_training_loader = get_training_dataloader(
@@ -249,23 +248,27 @@ if __name__ == '__main__':
 
     for epoch in range(1, settings.EPOCH + 1):
         gamma = 0.2
-        if epoch in settings.MILESTONES:
+        '''if epoch in settings.MILESTONES:
             current_lr *= gamma
             for param_group in optimizer.param_groups:
                 param_group['lr'] = current_lr
-            print(current_lr)
+            print(current_lr)'''
 
         train(epoch)
         top1_acc, top5_acc = eval_training(epoch)
 
         # dynamic generate architecture
-        if epoch >= 100 and epoch % 10 == 0:
+        if epoch % 10 == 0:
             if tolerance_times > 0:
                 net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc], generate_num, dev_num))
                 net = net.to(device)
+                # save the module
+                if not os.path.isdir("models"):
+                    os.mkdir("models")
+                torch.save(net, 'models/GoogleNet_Compressed_{:d}.pkl'.format(current_time))
                 if model_index == 0:
                     tolerance_times -= 1
-                    models.vgg.max_modification_num -= 100
+                    models.googlenet.max_modification_num -= 100
                     generate_num += 1
                     # models.vgg.kernel_neuron_proportion *= 0.6
                 optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
@@ -275,6 +278,7 @@ if __name__ == '__main__':
                 if not os.path.isdir("models"):
                     os.mkdir("models")
                 torch.save(net, 'models/GoogleNet_Compressed_{:d}.pkl'.format(current_time))
+                print(net)
                 break
 
 
@@ -284,3 +288,4 @@ if __name__ == '__main__':
             if not os.path.isdir("models"):
                 os.mkdir("models")
             torch.save(net, 'models/GoogleNet_Compressed_{:d}.pkl'.format(current_time))
+            print(net)

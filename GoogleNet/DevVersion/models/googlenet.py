@@ -81,12 +81,6 @@ class Inception(nn.Module):
     def forward(self, x):
         return torch.cat([self.b1(x), self.b2(x), self.b3(x), self.b4(x)], dim=1)
     
-    def update_inception(self):
-        if torch.rand(1).item() < prune_probability:
-            self.prune_kernel()
-        if torch.rand(1).item() < update_activitation_probability:
-            self.change_activation_function()
-    
     def prune_kernel(self):
         branch_choices = torch.tensor([1, 2, 3, 4])
         target_branch = torch.randint(0, len(branch_choices), (1,)).item()
@@ -111,7 +105,7 @@ class Inception(nn.Module):
         # prune target branch
         new_conv1_kernel_num = target_branch[target_layer].out_channels - 1
         if new_conv1_kernel_num == 0:
-            return
+            return None, None
         if target_layer >= 3:
             new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, padding=1)
         else:
@@ -125,10 +119,11 @@ class Inception(nn.Module):
 
         new_bn1 = nn.BatchNorm2d(new_conv1_kernel_num)
         with torch.no_grad():
-            new_bn1.weight.data = torch.cat((target_branch[target_layer + 1].weight.data, target_branch[target_layer + 1].weight.data.mean(dim=0, keepdim = True)), dim=0)
-            new_bn1.bias.data = torch.cat((target_branch[target_layer + 1].bias.data, target_branch[target_layer + 1].bias.data.mean(dim=0, keepdim=True)), dim=0)
-            new_bn1.running_mean = torch.cat((target_branch[target_layer + 1].running_mean, target_branch[target_layer + 1].running_mean.mean(dim=0, keepdim=True)), dim=0)
-            new_bn1.running_var = torch.cat((target_branch[target_layer + 1].running_var, target_branch[target_layer + 1].running_var.mean(dim=0, keepdim=True)), dim=0)
+            kept_indices = [i for i in range(target_branch[target_layer + 1].num_features) if i != target_kernel]
+            new_bn1.weight.data = target_branch[target_layer + 1].weight.data[kept_indices]
+            new_bn1.bias.data = target_branch[target_layer + 1].bias.data[kept_indices]
+            new_bn1.running_mean = target_branch[target_layer + 1].running_mean[kept_indices]
+            new_bn1.running_var = target_branch[target_layer + 1].running_var[kept_indices]
         target_branch[target_layer + 1] = new_bn1
         if target_branch == self.b1:
             self.branch1_out -= 1
@@ -143,6 +138,16 @@ class Inception(nn.Module):
             self.branch4_out -= 1
             return 4, target_kernel
         else:
+            # else, we need to decrement next conv layer's input inside inception
+            if target_layer + 3 >= 3:
+                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, padding=1)
+            else:
+                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size)
+            with torch.no_grad():
+                kept_indices = [i for i in range(target_branch[target_layer + 3].in_channels) if i != target_kernel]
+                new_conv2.weight.data = target_branch[target_layer + 3].weight.data[:, kept_indices, :, :]
+                new_conv2.bias.data = target_branch[target_layer + 3].bias.data
+            target_branch[target_layer + 3] = new_conv2
             return None, target_kernel
     
     def change_activation_function(self):
@@ -251,7 +256,7 @@ class GoogleNet(nn.Module):
     
     # define the function to resize the architecture kernel number
     def update_architecture(self):
-        update_times = torch.randint(low=int(max_modification_num / 3), high=max_modification_num + 1, size=(1,))
+        update_times = torch.randint(low=int(max_modification_num / 1.5), high=max_modification_num + 1, size=(1,))
         if torch.rand(1).item() < prune_probability:
             for update_id in range(update_times):
                 if torch.rand(1).item() < 0.05:
@@ -274,20 +279,20 @@ class GoogleNet(nn.Module):
         new_conv1_kernel_num = target_branch[target_layer].out_channels - 1
         if new_conv1_kernel_num == 0:
             return
-        new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size)
+        new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, padding=1, bias=False)
         weight_variances = torch.var(target_branch[target_layer].weight.data, dim = [1, 2, 3])
         target_kernel = torch.argmin(weight_variances).item()
         with torch.no_grad():
             new_conv1.weight.data = torch.cat([target_branch[target_layer].weight.data[:target_kernel], target_branch[target_layer].weight.data[target_kernel+1:]], dim=0)
-            new_conv1.bias.data = torch.cat([target_branch[target_layer].bias.data[:target_kernel], target_branch[target_layer].bias.data[target_kernel+1:]], dim=0)
         target_branch[target_layer] = new_conv1
 
         new_bn1 = nn.BatchNorm2d(new_conv1_kernel_num)
         with torch.no_grad():
-            new_bn1.weight.data = torch.cat((target_branch[target_layer + 1].weight.data, target_branch[target_layer + 1].weight.data.mean(dim=0, keepdim = True)), dim=0)
-            new_bn1.bias.data = torch.cat((target_branch[target_layer + 1].bias.data, target_branch[target_layer + 1].bias.data.mean(dim=0, keepdim=True)), dim=0)
-            new_bn1.running_mean = torch.cat((target_branch[target_layer + 1].running_mean, target_branch[target_layer + 1].running_mean.mean(dim=0, keepdim=True)), dim=0)
-            new_bn1.running_var = torch.cat((target_branch[target_layer + 1].running_var, target_branch[target_layer + 1].running_var.mean(dim=0, keepdim=True)), dim=0)
+            kept_indices = [i for i in range(target_branch[target_layer + 1].num_features) if i != target_kernel]
+            new_bn1.weight.data = target_branch[target_layer + 1].weight.data[kept_indices]
+            new_bn1.bias.data = target_branch[target_layer + 1].bias.data[kept_indices]
+            new_bn1.running_mean = target_branch[target_layer + 1].running_mean[kept_indices]
+            new_bn1.running_var = target_branch[target_layer + 1].running_var[kept_indices]
         target_branch[target_layer + 1] = new_bn1
 
         if target_layer == 6:
@@ -312,6 +317,13 @@ class GoogleNet(nn.Module):
                 new_conv2.weight.data = target_branch[1].weight.data[:, kept_indices, :, :]
                 new_conv2.bias.data = target_branch[1].bias.data
             target_branch[1] = new_conv2
+        else:
+            # else, decrement next conv input inside prelayer
+            new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, padding=1, bias=False)
+            with torch.no_grad():
+                kept_indices = [i for i in range(target_branch[target_layer + 3].in_channels) if i != target_kernel]
+                new_conv2.weight.data = target_branch[target_layer + 3].weight.data[:, kept_indices, :, :]
+            target_branch[target_layer + 3] = new_conv2
     
     def prune_inception(self):
         target_inception = torch.randint(0, 9, (1,)).item()
@@ -333,7 +345,7 @@ class GoogleNet(nn.Module):
             target_inception = self.a5
         else:
             target_inception = self.b5
-        ret, target_kernel = target_inception.update_inception()
+        ret, target_kernel = target_inception.prune_kernel()
         # if ret = none, no need to modify next layer's inpus
         if ret == None:
             return
@@ -378,8 +390,8 @@ class GoogleNet(nn.Module):
                     new_conv2.weight.data = target_branch[0].weight.data[:, kept_indices, :, :]
                     new_conv2.bias.data = target_branch[0].bias.data
                 target_branch[0] = new_conv2
-            target_branch = self.a3.b4
-            new_conv2 = nn.Conv2d(target_branch[0].in_channels - 1, target_branch[1].out_channels, kernel_size=target_branch[1].kernel_size)
+            target_branch = target_inception_2.b4
+            new_conv2 = nn.Conv2d(target_branch[1].in_channels - 1, target_branch[1].out_channels, kernel_size=target_branch[1].kernel_size)
             with torch.no_grad():
                 kept_indices = [i for i in range(target_branch[1].in_channels) if i != target_kernel]
                 new_conv2.weight.data = target_branch[1].weight.data[:, kept_indices, :, :]
