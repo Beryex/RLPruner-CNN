@@ -12,8 +12,8 @@ from utils import get_network, get_training_dataloader, get_test_dataloader, War
 
 import copy
 import math
-from models.googlenet import GoogleNet
-import models.googlenet
+from models.resnet import ResNet
+import models.resnet
 from thop import profile
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
@@ -85,7 +85,7 @@ def eval_training(epoch=0, tb=True):
     return correct_1 / len(cifar100_test_loader.dataset), correct_5 / len(cifar100_test_loader.dataset)
 
 
-def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, generate_num, dev_num):
+def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
     loss_function = nn.CrossEntropyLoss()
 
     # initialize all evaluating variables
@@ -106,7 +106,7 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
     for model_id in range(generate_num):
         # generate architecture
         dev_model = copy.deepcopy(original_model)
-        GoogleNet.update_architecture(dev_model)
+        ResNet.update_architecture(dev_model)
         dev_model = dev_model.to(device)
         dev_lr = lr
         dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
@@ -114,13 +114,14 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
         dev_top5_accuracies = []
         # train the architecture for dev_num times
         for dev_id in range(1, dev_num + 1):
+            print(dev_id)
             if dev_id == 6 or dev_id == 13 or dev_id == 18:
                 dev_lr *= gamma
                 for param_group in dev_optimizer.param_groups:
                     param_group['lr'] = dev_lr
             # begin training
             dev_model.train()               # set model into training
-            for train_x, train_label in cifar100_training_loader:
+            for (train_x, train_label) in cifar100_training_loader:
                 # move train data to device
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
@@ -132,16 +133,15 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 # update visualization
                 loss.backward()
                 dev_optimizer.step()
-            
-            # discard the first half data as model need retraining
+
+            # begin testing
             if (dev_id + 1) % dev_num >= math.ceil(dev_num / 2):
                 # initialize the testing parameters
                 correct_1 = 0.0
                 correct_5 = 0.0
-                # begin testing
                 dev_model.eval()
                 with torch.no_grad():
-                    for test_x, test_label in cifar100_test_loader:
+                    for (test_x, test_label) in cifar100_test_loader:
                         # move test data to device
                         test_x = test_x.to(device)
                         test_label = test_label.to(device)
@@ -156,6 +156,7 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                     # calculate the accuracy and print it
                     top1_accuracy = correct_1 / len(cifar100_test_loader.dataset)
                     top5_accuracy = correct_5 / len(cifar100_test_loader.dataset)
+                    # discard the first half data as model need retraining
                     dev_top1_accuracies.append(top1_accuracy)
                     dev_top5_accuracies.append(top5_accuracy)
         # store the model and score
@@ -171,9 +172,9 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
     model = copy.deepcopy(model_list[best_model_index])
     print("model %d wins" %best_model_index)
     print(model)
-    print(model.prelayer[3].weight.shape)
-    print(model.a5.b3[3].weight.shape)
-    print(model.linear.weight.shape)
+    print(model.conv1[0].weight.shape)
+    print(model.conv3_x[1].residual_function[6].weight.shape)
+    print(model.fc.weight.shape)
     return model, best_model_index
 
 
@@ -219,9 +220,10 @@ if __name__ == '__main__':
     print('Start with random seed %d' %current_time)
     
     tolerance_times = max_tolerance_times
-    current_lr = lr
+    current_lr = lr * 0.2 * 0.2 * 0.2
 
-    net = GoogleNet().to(device)
+    net = torch.load('models/ResNet_Compressed_1710280946.pkl')
+    net = net.to(device)
 
     #data preprocessing:
     cifar100_training_loader = get_training_dataloader(
@@ -248,27 +250,27 @@ if __name__ == '__main__':
     best_acc = 0.0
 
     for epoch in range(1, settings.EPOCH + 1):
-        if epoch in settings.MILESTONES:
+        '''if epoch in settings.MILESTONES:
             current_lr *= gamma
             for param_group in optimizer.param_groups:
                 param_group['lr'] = current_lr
-            print(current_lr)
+            print(current_lr)'''
 
         train(epoch)
         top1_acc, top5_acc = eval_training(epoch)
 
         # dynamic generate architecture
-        if epoch > 100 and epoch % 10 == 0:
+        if epoch % 10 == 0:
             if tolerance_times > 0:
-                net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc], generate_num, dev_num))
+                net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc]))
                 net = net.to(device)
                 # save the module
                 if not os.path.isdir("models"):
                     os.mkdir("models")
-                torch.save(net, 'models/GoogleNet_Compressed_{:d}.pkl'.format(current_time))
+                torch.save(net, 'models/ResNet_Compressed_{:d}.pkl'.format(current_time))
                 if model_index == 0:
                     tolerance_times -= 1
-                    models.googlenet.max_modification_num / 2
+                    models.resnet.max_modification_num / 2
                     generate_num += 1
                     # models.vgg.kernel_neuron_proportion *= 0.6
                 optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
@@ -277,7 +279,7 @@ if __name__ == '__main__':
                 # save the module
                 if not os.path.isdir("models"):
                     os.mkdir("models")
-                torch.save(net, 'models/GoogleNet_Compressed_{:d}.pkl'.format(current_time))
+                torch.save(net, 'models/ResNet_Compressed_{:d}.pkl'.format(current_time))
                 print(net)
                 break
 
@@ -287,5 +289,5 @@ if __name__ == '__main__':
             # save the module
             if not os.path.isdir("models"):
                 os.mkdir("models")
-            torch.save(net, 'models/GoogleNet_Compressed_{:d}.pkl'.format(current_time))
+            torch.save(net, 'models/ResNet_Compressed_{:d}.pkl'.format(current_time))
             print(net)

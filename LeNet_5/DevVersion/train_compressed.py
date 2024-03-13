@@ -1,8 +1,4 @@
-<<<<<<< HEAD:LeNet_5/DevVersion/train_compressed.py
 from models.lenet import LeNet
-=======
-from lenet import LeNet
->>>>>>> 0dd8a320783e68dd14a5e93ce12bc78cdaf71e58:LeNet_5/DynamicVersion/train.py
 import numpy as np
 import os
 import torch
@@ -19,11 +15,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
 from thop import profile
-<<<<<<< HEAD:LeNet_5/DevVersion/train_compressed.py
 import models.lenet as lenet
-=======
-import lenet
->>>>>>> 0dd8a320783e68dd14a5e93ce12bc78cdaf71e58:LeNet_5/DynamicVersion/train.py
 
 # global hyperparameter
 train_num = 1               # how many training we are going to take
@@ -113,11 +105,7 @@ def train_dynamic_architecture():
                 # save the module
                 if not os.path.isdir("models"):
                     os.mkdir("models")
-<<<<<<< HEAD:LeNet_5/DevVersion/train_compressed.py
                 torch.save(model, 'models/LeNet_Compressed_{:d}.pkl'.format(current_time))
-=======
-                torch.save(model, 'models/mnist_{:d}.pkl'.format(current_time))
->>>>>>> 0dd8a320783e68dd14a5e93ce12bc78cdaf71e58:LeNet_5/DynamicVersion/train.py
                 print("Single training have %f top1 accuracy using model with architexcture [%d, %d, %d, %d, %s, %s, %s, %s, %s]" %(top1_accuracy, model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, str(model.conv1_activation_func), str(model.conv2_activation_func), str(model.fc1_activation_func), str(model.fc2_activation_func), str(model.fc3_activation_func)))
             
             # check and update architecture
@@ -126,10 +114,7 @@ def train_dynamic_architecture():
                     # update architecture
                     # find the potential best architecture\
                     model, model_index = copy.deepcopy(generate_architecture(model, [top1_accuracy], [top3_accuracy], generate_num, dev_num))
-<<<<<<< HEAD:LeNet_5/DevVersion/train_compressed.py
                     model = model.to(device)
-=======
->>>>>>> 0dd8a320783e68dd14a5e93ce12bc78cdaf71e58:LeNet_5/DynamicVersion/train.py
                     sgd = SGD(model.parameters(), lr = 1e-1)
                     if model_index == 0:
                         tolerance_times -= 1
@@ -141,11 +126,7 @@ def train_dynamic_architecture():
                     # save the module
                     if not os.path.isdir("models"):
                         os.mkdir("models")
-<<<<<<< HEAD:LeNet_5/DevVersion/train_compressed.py
                     torch.save(model, 'models/LeNet_Compressed_{:d}.pkl'.format(current_time))
-=======
-                    torch.save(model, 'models/mnist_{:d}.pkl'.format(train_id))
->>>>>>> 0dd8a320783e68dd14a5e93ce12bc78cdaf71e58:LeNet_5/DynamicVersion/train.py
                     print("Single training have %f top1 accuracy using model with architexcture [%d, %d, %d, %d, %s, %s, %s, %s, %s]" %(top1_accuracy, model.conv1.out_channels, model.conv2.out_channels, model.fc1.out_features, model.fc2.out_features, str(model.conv1_activation_func), str(model.conv2_activation_func), str(model.fc1_activation_func), str(model.fc2_activation_func), str(model.fc3_activation_func)))
                     break
             prev_accuracy = top1_accuracy
@@ -184,7 +165,7 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
         for dev_id in range(dev_num):
             # begin training
             dev_model.train()               # set model into training
-            for idx, (train_x, train_label) in enumerate(train_loader):
+            for train_x, train_label in train_loader:
                 # move train data to device
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
@@ -196,29 +177,29 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
                 loss.backward()
                 sgd.step()
             
-            # initialize the testing parameters
-            top1_correct_num = 0.0
-            top3_correct_num = 0.0
-
-            # begin testing
-            dev_model.eval()
-            for idx, (test_x, test_label) in enumerate(test_loader):
-                # move test data to device
-                test_x = test_x.to(device)
-                test_label = test_label.to(device)
-                # get predict y and predict its class
-                outputs = dev_model(test_x)
-                _, preds = outputs.topk(3, 1, largest=True, sorted=True)
-                top1_correct_num += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
-                top3_correct = test_label.view(-1, 1).expand_as(preds) == preds
-                top3_correct_num += top3_correct.any(dim=1).sum().item()
-            # calculate the accuracy and print it
-            top1_accuracy = top1_correct_num / len(test_loader.dataset)
-            top3_accuracy = top3_correct_num / len(test_loader.dataset)
             # discard the first half data as model need retraining
             if (dev_id + 1) % dev_num >= math.ceil(dev_num / 2):
-                dev_top1_accuracies.append(top1_accuracy)
-                dev_top3_accuracies.append(top3_accuracy)
+                # initialize the testing parameters
+                top1_correct_num = 0.0
+                top3_correct_num = 0.0
+                # begin testing
+                dev_model.eval()
+                with torch.no_grad():
+                    for test_x, test_label in test_loader:
+                        # move test data to device
+                        test_x = test_x.to(device)
+                        test_label = test_label.to(device)
+                        # get predict y and predict its class
+                        outputs = dev_model(test_x)
+                        _, preds = outputs.topk(3, 1, largest=True, sorted=True)
+                        top1_correct_num += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
+                        top3_correct = test_label.view(-1, 1).expand_as(preds) == preds
+                        top3_correct_num += top3_correct.any(dim=1).sum().item()
+                    # calculate the accuracy and print it
+                    top1_accuracy = top1_correct_num / len(test_loader.dataset)
+                    top3_accuracy = top3_correct_num / len(test_loader.dataset)
+                    dev_top1_accuracies.append(top1_accuracy)
+                    dev_top3_accuracies.append(top3_accuracy)
         # store the model and score
         model_list.append(dev_model)
         top1_accuracy_list.append(dev_top1_accuracies)

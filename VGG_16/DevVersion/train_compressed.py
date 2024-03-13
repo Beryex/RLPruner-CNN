@@ -121,7 +121,7 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 print(dev_lr)
             # begin training
             dev_model.train()               # set model into training
-            for idx, (train_x, train_label) in enumerate(cifar100_training_loader):
+            for train_x, train_label in cifar100_training_loader:
                 # move train data to device
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
@@ -134,31 +134,31 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 loss.backward()
                 dev_optimizer.step()
             
-            # initialize the testing parameters
-            correct_1 = 0.0
-            correct_5 = 0.0
-
-            # begin testing
-            dev_model.eval()
-            for idx, (test_x, test_label) in enumerate(cifar100_test_loader):
-                # move test data to device
-                test_x = test_x.to(device)
-                test_label = test_label.to(device)
-                # get predict y and predict its class
-                outputs = dev_model(test_x)
-                _, preds = outputs.topk(5, 1, largest=True, sorted=True)
-                #compute top1
-                correct_1 += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
-                #compute top 5
-                top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
-                correct_5 += top5_correct.any(dim=1).sum().item()
-            # calculate the accuracy and print it
-            top1_accuracy = correct_1 / len(cifar100_test_loader.dataset)
-            top5_accuracy = correct_5 / len(cifar100_test_loader.dataset)
             # discard the first half data as model need retraining
             if (dev_id + 1) % dev_num >= math.ceil(dev_num / 2):
-                dev_top1_accuracies.append(top1_accuracy)
-                dev_top5_accuracies.append(top5_accuracy)
+                # initialize the testing parameters
+                correct_1 = 0.0
+                correct_5 = 0.0
+                # begin testing
+                dev_model.eval()
+                with torch.no_grad():
+                    for test_x, test_label in cifar100_test_loader:
+                        # move test data to device
+                        test_x = test_x.to(device)
+                        test_label = test_label.to(device)
+                        # get predict y and predict its class
+                        outputs = dev_model(test_x)
+                        _, preds = outputs.topk(5, 1, largest=True, sorted=True)
+                        #compute top1
+                        correct_1 += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
+                        #compute top 5
+                        top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
+                        correct_5 += top5_correct.any(dim=1).sum().item()
+                    # calculate the accuracy and print it
+                    top1_accuracy = correct_1 / len(cifar100_test_loader.dataset)
+                    top5_accuracy = correct_5 / len(cifar100_test_loader.dataset)
+                    dev_top1_accuracies.append(top1_accuracy)
+                    dev_top5_accuracies.append(top5_accuracy)
         # store the model and score
         model_list.append(dev_model)
         top1_accuracy_list.append(dev_top1_accuracies)
