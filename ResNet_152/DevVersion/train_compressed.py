@@ -169,12 +169,13 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
         parameter_num_list.append(dev_parameter_num)
     score_list = compute_score(model_list, top1_accuracy_list, top5_accuracy_list, FLOPs_list, parameter_num_list)
     best_model_index = np.argmax(score_list)
+    best_model_FLOPs = FLOPs_list[best_model_index]
+    best_model_Params = parameter_num_list[best_model_index]
+    FLOPs_compressed_ratio = best_model_FLOPs / local_FLOPs
+    Para_compressed_ratio = best_model_Params / local_parameter_num
     model = copy.deepcopy(model_list[best_model_index])
     print("model %d wins" %best_model_index)
-    print(model)
-    print(model.conv1[0].weight.shape)
-    print(model.conv3_x[1].residual_function[6].weight.shape)
-    print(model.fc.weight.shape)
+    print("This compression ratio: FLOPs: %f, Parameter number: %f" %(FLOPs_compressed_ratio, Para_compressed_ratio))
     return model, best_model_index
 
 
@@ -222,7 +223,7 @@ if __name__ == '__main__':
     tolerance_times = max_tolerance_times
     current_lr = lr * 0.2 * 0.2 * 0.2
 
-    net = torch.load('models/ResNet_Compressed_1710280946.pkl')
+    net = torch.load('models/ResNet_Compressed_1710346448.pkl')
     net = net.to(device)
 
     #data preprocessing:
@@ -260,7 +261,7 @@ if __name__ == '__main__':
         top1_acc, top5_acc = eval_training(epoch)
 
         # dynamic generate architecture
-        if epoch % 10 == 0:
+        if epoch % 5 == 0:
             if tolerance_times > 0:
                 net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc]))
                 net = net.to(device)

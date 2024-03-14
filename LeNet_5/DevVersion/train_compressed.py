@@ -210,10 +210,13 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy, gener
         parameter_num_list.append(dev_parameter_num)
     score_list = compute_score(model_list, top1_accuracy_list, top3_accuracy_list, FLOPs_list, parameter_num_list)
     best_model_index = np.argmax(score_list)
+    best_model_FLOPs = FLOPs_list[best_model_index]
+    best_model_Params = parameter_num_list[best_model_index]
+    FLOPs_compressed_ratio = best_model_FLOPs / local_FLOPs
+    Para_compressed_ratio = best_model_Params / local_parameter_num
     model = copy.deepcopy(model_list[best_model_index])
     print("model %d wins with %d conv1_kernel_num and %d conv2_kernel_num" %(best_model_index, model.conv1.out_channels, model.conv2.out_channels))
-    print(model.conv2.weight.shape)
-    print(model.fc2.weight.shape)
+    print("This compression ratio: FLOPs: %f, Parameter number: %f" %(FLOPs_compressed_ratio, Para_compressed_ratio))
     return model, best_model_index
 
 

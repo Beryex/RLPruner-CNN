@@ -2,11 +2,7 @@ import torch
 import torch.nn as nn
 
 # define model parameters
-prune_probability = 1
-kernel_neuron_proportion = 0.33
-neuron_proportion = 0.5
-update_activitation_probability = 0.5
-max_modification_num = 500
+max_modification_num = 1000
 
 
 class BottleNeck(nn.Module):
@@ -177,19 +173,14 @@ class ResNet(nn.Module):
 
     def update_architecture(self):
         update_times = torch.randint(low=int(max_modification_num / 1.5), high=max_modification_num + 1, size=(1,))
-        decre_num = 0
-        if torch.rand(1).item() < prune_probability:
-            for update_id in range(update_times):
-                if decre_num > 0:
-                    decre_num -= 1
-                    continue
-                if torch.rand(1).item() < 0.02:
-                    self.prune_kernel()
-                if torch.rand(1).item() > 0.02:
-                    if torch.rand(1).item() <= 5 / 6:
-                        self.prune_mediate_blocks()
-                    else:
-                        decre_num = self.prune_output_blocks()
+        for update_id in range(update_times):
+            if torch.rand(1).item() < 0.02:
+                self.prune_kernel()
+            if torch.rand(1).item() > 0.02:
+                if torch.rand(1).item() <= 5 / 6:
+                    self.prune_mediate_blocks()
+                else:
+                    self.prune_output_blocks()
 
     def prune_kernel(self):
         target_branch = self.conv1
@@ -228,7 +219,6 @@ class ResNet(nn.Module):
             target_block = self.conv4_x[target_block - 8 - 3 - 1]
         else:
             target_block = self.conv5_x[target_block - 36 - 8 - 3 - 1]
-            
         target_block.prune_mediate_kernel()
     
     def prune_output_blocks(self):

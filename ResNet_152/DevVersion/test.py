@@ -40,7 +40,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/GoogleNet_Original_1709531958.pkl')
+    model = torch.load('models/ResNet_Original_1710087132.pkl')
     model = model.to(device)
     start = time.time()
     model.eval()
@@ -69,7 +69,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/GoogleNet_Compressed_1710001388.pkl')
+    model = torch.load('models/ResNet_Compressed_1710346448.pkl')
     model = model.to(device)
     start = time.time()
     model.eval()
