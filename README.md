@@ -5,49 +5,23 @@ Research Supervisor:
 
 # Method Description
 ![MyMethod](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/Algorithm.png)
-## **To Do List**
-- Refine the hyperparameters for VGG-16 Model
-- Visualization of layers' feature capture in simplified LeNet-5 Model
-- Try ResNet, UNet Model
+## Hyperparameter
+Hyperparameter are all stored in global_settings.py in folder conf under each specific model's directory.
 
 ## To run it
-### Test LeNet-5
-![LeNet-5](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/LeNet-5.png)
-- in one terminal
+First move to the DevVersion directory of a specific model, then run
 ```
-python -m visdom.server
+python train_original.py
 ```
-Then go to that local host to see the visualization of result
-- run train.py in another terminal
+Then replace the model in train_compressed.py with the reference model gained by train_original.py and run
 ```
-cd .\LeNet_5\DynamicVersion\
-python train.py
+python train_compressed.py
 ```
-### Test VGG-16
-![VGG-16](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/VGG-16.png)
+Then replace the model in test.py with the reference model gained by train_original.py and compressed model gained by train_commpressed.py, and run
 ```
-cd .\VGG_16\DynamicVersion\
-python train.py -net vgg16 -gpu
+python test.py
 ```
+to see the compressed model's architecture, the compressed ratio and corresponding accuracy.
 
-## **Current Version: 0.2.0**
-### Update Content:
-- Find simplified architecture for LeNet-5
-- Insert the method into VGG-16 model, but result is not good
-### **Version: 0.1.2**
-### Update Content:
-- Improve the algorithm to train architecture during training epochs on LeNet-5
-### **Version: 0.0.75**
-### Update Content:
-- Implement basic algorithm to update architecture during training epochs
-### **Version: 0.0.50**
-### Update Content:
-- Implement basic algorithm to test different architecture before training epochs
-### **Version: 0.0.10**
-### Update Content:
-- Implement LeNet model for digits recognization
-- Implement of visualization of results
-### **Version: 0.0.05**
-### Update Content:
-- Build Pytorch environment using anaconda and link it to VSCode
-- Link the local repository to the github remote repository
+## Results
+
