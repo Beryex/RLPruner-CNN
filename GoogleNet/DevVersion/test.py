@@ -1,19 +1,8 @@
-import argparse
-
-from matplotlib import pyplot as plt
-
 import torch
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-
 from conf import settings
 from utils import get_network, get_test_dataloader
 
 from thop import profile
-
-import sys
-import time
-
 
 # move the LeNet Module into the corresponding device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -29,10 +18,8 @@ def test():
 
     original_para_num = 0.0
     original_FLOPs_num = 0.0
-    original_running_time = 0.0
     compressed_para_num = 0.0
     compressed_FLOPs_num = 0.0
-    compressed_running_time = 0.0
     input = torch.rand(128, 3, 32, 32).to(device)
 
     # initialize the testing parameters
@@ -42,7 +29,6 @@ def test():
     # begin testing
     model = torch.load('models/GoogleNet_Original_1709531958.pkl')
     model = model.to(device)
-    start = time.time()
     model.eval()
     with torch.no_grad():
         for idx, (test_x, test_label) in enumerate(cifar100_test_loader):
@@ -55,8 +41,6 @@ def test():
             top1_correct_num += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
             top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
             top5_correct_num += top5_correct.any(dim=1).sum().item()
-    finish = time.time()
-    original_running_time = finish - start
     # calculate the accuracy and print it
     top1_accuracy = top1_correct_num / len(cifar100_test_loader.dataset)
     top5_accuracy = top5_correct_num / len(cifar100_test_loader.dataset)
@@ -71,7 +55,7 @@ def test():
     # begin testing
     model = torch.load('models/GoogleNet_Compressed_1710001388.pkl')
     model = model.to(device)
-    start = time.time()
+    print(model)
     model.eval()
     with torch.no_grad():
         for idx, (test_x, test_label) in enumerate(cifar100_test_loader):
@@ -84,23 +68,18 @@ def test():
             top1_correct_num += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
             top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
             top5_correct_num += top5_correct.any(dim=1).sum().item()
-    finish = time.time()
-    compressed_running_time = finish - start
     # calculate the accuracy and print it
     top1_accuracy = top1_correct_num / len(cifar100_test_loader.dataset)
     top5_accuracy = top5_correct_num / len(cifar100_test_loader.dataset)
-    '''print(model.features)
-    print(model.classifier)
-    print(model.features['Conv6'].weight.shape)
-    print(model.classifier[3].weight.shape)'''
     print('Compressed Model has top1 accuracy: %f, top5 accuracy: %f' %(top1_accuracy, top5_accuracy))
     compressed_FLOPs_num, compressed_para_num = profile(model, inputs = (input, ), verbose=False)
     
     # get compressed ratio
     FLOPs_compressed_ratio = compressed_FLOPs_num / original_FLOPs_num
     Para_compressed_ratio = compressed_para_num / original_para_num
-    running_time_ratio = compressed_running_time / original_running_time
-    print('We achieve FLOPS compressed ratio: %f, parameter number compressed ratio: %f, running time compressed ratio: %f' %(FLOPs_compressed_ratio, Para_compressed_ratio, running_time_ratio))
+    print('Original FLOPs: %f, Parameter Num: %f' %(original_FLOPs_num, original_para_num))
+    print('Compressed FLOPs: %f, Parameter Num: %f' %(compressed_FLOPs_num, compressed_para_num))
+    print('We achieve FLOPS compressed ratio: %f, parameter number compressed ratio: %f' %(FLOPs_compressed_ratio, Para_compressed_ratio))
 
 if __name__ == '__main__':
     test()

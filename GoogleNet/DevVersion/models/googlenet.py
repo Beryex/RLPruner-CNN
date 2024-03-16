@@ -1,23 +1,5 @@
-"""google net in pytorch
-
-
-
-[1] Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed,
-    Dragomir Anguelov, Dumitru Erhan, Vincent Vanhoucke, Andrew Rabinovich.
-
-    Going Deeper with Convolutions
-    https://arxiv.org/abs/1409.4842v1
-"""
-
 import torch
 import torch.nn as nn
-
-# define model parameters
-prune_probability = 1
-kernel_neuron_proportion = 0.33
-neuron_proportion = 0.5
-update_activitation_probability = 0.5
-max_modification_num = 500
 
 class Inception(nn.Module):
     def __init__(self, input_channels, n1x1, n3x3_reduce, n3x3, n5x5_reduce, n5x5, pool_proj):
@@ -30,17 +12,17 @@ class Inception(nn.Module):
 
         #1x1conv branch
         self.b1 = nn.Sequential(
-            nn.Conv2d(input_channels, n1x1, kernel_size=1),
+            nn.Conv2d(input_channels, n1x1, kernel_size=1, bias=False),
             nn.BatchNorm2d(n1x1),
             nn.ReLU(inplace=True)
         )
 
         #1x1conv -> 3x3conv branch
         self.b2 = nn.Sequential(
-            nn.Conv2d(input_channels, n3x3_reduce, kernel_size=1),
+            nn.Conv2d(input_channels, n3x3_reduce, kernel_size=1, bias=False),
             nn.BatchNorm2d(n3x3_reduce),
             nn.ReLU(inplace=True),
-            nn.Conv2d(n3x3_reduce, n3x3, kernel_size=3, padding=1),
+            nn.Conv2d(n3x3_reduce, n3x3, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n3x3),
             nn.ReLU(inplace=True)
         )
@@ -50,13 +32,13 @@ class Inception(nn.Module):
         #of 1 5x5 filters to obtain the same receptive
         #field with fewer parameters
         self.b3 = nn.Sequential(
-            nn.Conv2d(input_channels, n5x5_reduce, kernel_size=1),
+            nn.Conv2d(input_channels, n5x5_reduce, kernel_size=1, bias=False),
             nn.BatchNorm2d(n5x5_reduce),
             nn.ReLU(inplace=True),
-            nn.Conv2d(n5x5_reduce, n5x5, kernel_size=3, padding=1),
+            nn.Conv2d(n5x5_reduce, n5x5, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n5x5, n5x5),
             nn.ReLU(inplace=True),
-            nn.Conv2d(n5x5, n5x5, kernel_size=3, padding=1),
+            nn.Conv2d(n5x5, n5x5, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n5x5),
             nn.ReLU(inplace=True)
         )
@@ -65,7 +47,7 @@ class Inception(nn.Module):
         #same conv
         self.b4 = nn.Sequential(
             nn.MaxPool2d(3, stride=1, padding=1),
-            nn.Conv2d(input_channels, pool_proj, kernel_size=1),
+            nn.Conv2d(input_channels, pool_proj, kernel_size=1, bias=False),
             nn.BatchNorm2d(pool_proj),
             nn.ReLU(inplace=True)
         )
@@ -99,14 +81,13 @@ class Inception(nn.Module):
         if new_conv1_kernel_num == 0:
             return None, None
         if target_layer >= 3:
-            new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, padding=1)
+            new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, padding=1, bias=False)
         else:
-            new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size)
+            new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, bias=False)
         weight_variances = torch.var(target_branch[target_layer].weight.data, dim = [1, 2, 3])
         target_kernel = torch.argmin(weight_variances).item()
         with torch.no_grad():
             new_conv1.weight.data = torch.cat([target_branch[target_layer].weight.data[:target_kernel], target_branch[target_layer].weight.data[target_kernel+1:]], dim=0)
-            new_conv1.bias.data = torch.cat([target_branch[target_layer].bias.data[:target_kernel], target_branch[target_layer].bias.data[target_kernel+1:]], dim=0)
         target_branch[target_layer] = new_conv1
 
         new_bn1 = nn.BatchNorm2d(new_conv1_kernel_num)
@@ -132,13 +113,12 @@ class Inception(nn.Module):
         else:
             # else, we need to decrement next conv layer's input inside inception
             if target_layer + 3 >= 3:
-                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, padding=1)
+                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, padding=1, bias=False)
             else:
-                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size)
+                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, bias=False)
             with torch.no_grad():
                 kept_indices = [i for i in range(target_branch[target_layer + 3].in_channels) if i != target_kernel]
                 new_conv2.weight.data = target_branch[target_layer + 3].weight.data[:, kept_indices, :, :]
-                new_conv2.bias.data = target_branch[target_layer + 3].bias.data
             target_branch[target_layer + 3] = new_conv2
             return None, target_kernel
     
@@ -247,18 +227,17 @@ class GoogleNet(nn.Module):
         return x
     
     # define the function to resize the architecture kernel number
-    def update_architecture(self):
-        update_times = torch.randint(low=int(max_modification_num / 1.5), high=max_modification_num + 1, size=(1,))
-        if torch.rand(1).item() < prune_probability:
-            for update_id in range(update_times):
-                if torch.rand(1).item() < 0.05:
-                    self.prune_kernel()
-                if torch.rand(1).item() > 0.05:
-                    self.prune_inception()
-        if torch.rand(1).item() < update_activitation_probability:
+    def update_architecture(self, modification_num):
+        update_times = int(modification_num + 1)
+        for update_id in range(update_times):
+            if torch.rand(1).item() < 0.05:
+                self.prune_kernel()
+            else:
+                self.prune_inception()
+        if torch.rand(1).item() < 0:
             if torch.rand(1).item() < 0.05:
                 self.change_activation_function()
-            if torch.rand(1).item() > 0.05:
+            else:
                 self.change_inception_activation_function()
     
     def prune_kernel(self):
@@ -296,18 +275,16 @@ class GoogleNet(nn.Module):
                     target_branch = self.a3.b2
                 elif target_branch_id == 3:
                     target_branch = self.a3.b3
-                new_conv2 = nn.Conv2d(new_conv1_kernel_num, target_branch[0].out_channels, kernel_size=target_branch[0].kernel_size)
+                new_conv2 = nn.Conv2d(new_conv1_kernel_num, target_branch[0].out_channels, kernel_size=target_branch[0].kernel_size, bias=False)
                 with torch.no_grad():
                     kept_indices = [i for i in range(target_branch[0].in_channels) if i != target_kernel]
                     new_conv2.weight.data = target_branch[0].weight.data[:, kept_indices, :, :]
-                    new_conv2.bias.data = target_branch[0].bias.data
                 target_branch[0] = new_conv2
             target_branch = self.a3.b4
-            new_conv2 = nn.Conv2d(new_conv1_kernel_num, target_branch[1].out_channels, kernel_size=target_branch[1].kernel_size)
+            new_conv2 = nn.Conv2d(new_conv1_kernel_num, target_branch[1].out_channels, kernel_size=target_branch[1].kernel_size, bias=False)
             with torch.no_grad():
                 kept_indices = [i for i in range(target_branch[1].in_channels) if i != target_kernel]
                 new_conv2.weight.data = target_branch[1].weight.data[:, kept_indices, :, :]
-                new_conv2.bias.data = target_branch[1].bias.data
             target_branch[1] = new_conv2
         else:
             # else, decrement next conv input inside prelayer
@@ -376,18 +353,16 @@ class GoogleNet(nn.Module):
                     target_branch = target_inception_2.b2
                 elif target_branch_id == 3:
                     target_branch = target_inception_2.b3
-                new_conv2 = nn.Conv2d(target_branch[0].in_channels - 1, target_branch[0].out_channels, kernel_size=target_branch[0].kernel_size)
+                new_conv2 = nn.Conv2d(target_branch[0].in_channels - 1, target_branch[0].out_channels, kernel_size=target_branch[0].kernel_size, bias=False)
                 with torch.no_grad():
                     kept_indices = [i for i in range(target_branch[0].in_channels) if i != target_kernel]
                     new_conv2.weight.data = target_branch[0].weight.data[:, kept_indices, :, :]
-                    new_conv2.bias.data = target_branch[0].bias.data
                 target_branch[0] = new_conv2
             target_branch = target_inception_2.b4
-            new_conv2 = nn.Conv2d(target_branch[1].in_channels - 1, target_branch[1].out_channels, kernel_size=target_branch[1].kernel_size)
+            new_conv2 = nn.Conv2d(target_branch[1].in_channels - 1, target_branch[1].out_channels, kernel_size=target_branch[1].kernel_size, bias=False)
             with torch.no_grad():
                 kept_indices = [i for i in range(target_branch[1].in_channels) if i != target_kernel]
                 new_conv2.weight.data = target_branch[1].weight.data[:, kept_indices, :, :]
-                new_conv2.bias.data = target_branch[1].bias.data
             target_branch[1] = new_conv2
         else:
             # update FC layer

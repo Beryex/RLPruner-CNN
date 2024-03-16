@@ -23,7 +23,6 @@ def get_CIFAR10_training_dataloader(mean, std, batch_size=16, num_workers=2, shu
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
-    #cifar10_training = CIFAR100Train(path, transform=transform_train)
     cifar10_training = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
     cifar10_training_loader = DataLoader(
         cifar10_training, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
@@ -46,62 +45,33 @@ def get_CIFAR10_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
-    #cifar10_test = CIFAR100Test(path, transform=transform_test)
     cifar10_test = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
     cifar10_test_loader = DataLoader(
         cifar10_test, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
     return cifar10_test_loader
 
-def get_CIFAR100_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
-    """ return training dataloader
-    Args:
-        mean: mean of cifar100 training dataset
-        std: std of cifar100 training dataset
-        path: path to cifar100 training python dataset
-        batch_size: dataloader batchsize
-        num_workers: dataloader num_works
-        shuffle: whether to shuffle
-    Returns: train_data_loader:torch dataloader object
-    """
-
+def get_MNIST_training_dataloader(batch_size=16, num_workers=2, shuffle=True):
     transform_train = transforms.Compose([
-        #transforms.ToPILImage(),
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(15),
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std)
+        transforms.Resize((32, 32)),
+        transforms.ToTensor()
     ])
-    #cifar100_training = CIFAR100Train(path, transform=transform_train)
-    cifar100_training = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-    cifar100_training_loader = DataLoader(
-        cifar100_training, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
+    mnist_training = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform_train)
+    mnist_training_loader = DataLoader(
+        mnist_training, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
-    return cifar100_training_loader
+    return mnist_training_loader
 
-def get_CIFAR100_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
-    """ return training dataloader
-    Args:
-        mean: mean of cifar100 test dataset
-        std: std of cifar100 test dataset
-        path: path to cifar100 test python dataset
-        batch_size: dataloader batchsize
-        num_workers: dataloader num_works
-        shuffle: whether to shuffle
-    Returns: cifar100_test_loader:torch dataloader object
-    """
-
+def get_MNIST_test_dataloader(batch_size=16, num_workers=2, shuffle=True):
     transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std)
+        transforms.Resize((32, 32)),
+        transforms.ToTensor()
     ])
-    #cifar100_test = CIFAR100Test(path, transform=transform_test)
-    cifar100_test = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
-    cifar100_test_loader = DataLoader(
-        cifar100_test, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
+    mnist_test = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform_test)
+    mnist_test_loader = DataLoader(
+        mnist_test, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
-    return cifar100_test_loader
+    return mnist_test_loader
 
 class WarmUpLR(_LRScheduler):
     """warmup_training learning rate scheduler

@@ -1,5 +1,4 @@
 import os
-import argparse
 import time
 
 import numpy as np
@@ -8,29 +7,18 @@ import torch.nn as nn
 import torch.optim as optim
 
 from conf import settings
-from utils import get_network, get_training_dataloader, get_test_dataloader, WarmUpLR, \
-    most_recent_folder, most_recent_weights, last_epoch, best_acc_weights
+from utils import get_CIFAR10_training_dataloader, get_CIFAR10_test_dataloader, get_CIFAR100_training_dataloader, get_CIFAR100_test_dataloader, WarmUpLR
 
 import copy
 import math
 from models.vgg import VGG
-import models.vgg
 from thop import profile
-
-
-# global hyperparameter
-train_num = 5               # how many training we are going to take
-generate_num = 3            # for each updates, how many potential architecture we are going to generate
-dev_num = 20                # for each potential architecture, how many epochs we are going to train it
-accuracy_threshold = 0.7    # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
-max_tolerance_times = 3     # for each training, how many updates we are going to apply before we get the final architecture
-
 
 def train(epoch):
 
     start = time.time()
     net.train()
-    for batch_index, (images, labels) in enumerate(cifar100_training_loader):
+    for batch_index, (images, labels) in enumerate(cifar10_training_loader):
         labels = labels.to(device)
         images = images.to(device)
         optimizer.zero_grad()
@@ -56,7 +44,7 @@ def eval_training(epoch=0, tb=True):
     correct_1 = 0.0
     correct_5 = 0.0
 
-    for (images, labels) in cifar100_test_loader:
+    for (images, labels) in cifar10_test_loader:
 
         images = images.to(device)
         labels = labels.cuda()
@@ -76,16 +64,16 @@ def eval_training(epoch=0, tb=True):
     print('Evaluating Network.....')
     print('Test set: Epoch: {}, Average loss: {:.4f}, Top1 Accuracy: {:.4f}, Top5 Accuracy: {:.4f}, Time consumed:{:.2f}s'.format(
         epoch,
-        test_loss / len(cifar100_test_loader.dataset),
-        correct_1 / len(cifar100_test_loader.dataset),
-        correct_5 / len(cifar100_test_loader.dataset),
+        test_loss / len(cifar10_test_loader.dataset),
+        correct_1 / len(cifar10_test_loader.dataset),
+        correct_5 / len(cifar10_test_loader.dataset),
         finish - start
     ))
 
-    return correct_1 / len(cifar100_test_loader.dataset), correct_5 / len(cifar100_test_loader.dataset)
+    return correct_1 / len(cifar10_test_loader.dataset), correct_5 / len(cifar10_test_loader.dataset)
 
 
-def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, generate_num, dev_num):
+def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
     loss_function = nn.CrossEntropyLoss()
 
     # initialize all evaluating variables
@@ -106,7 +94,7 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
     for model_id in range(generate_num):
         # generate architecture
         dev_model = copy.deepcopy(original_model)
-        VGG.update_architecture(dev_model)
+        VGG.update_architecture(dev_model, modification_num)
         dev_model = dev_model.to(device)
         dev_lr = lr
         dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
@@ -114,14 +102,13 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
         dev_top5_accuracies = []
         # train the architecture for dev_num times
         for dev_id in range(1, dev_num + 1):
-            if dev_id == 6 or dev_id == 13 or dev_id == 18:
+            if dev_id in settings.DYNAMIC_MILESTONES:
                 dev_lr *= gamma
                 for param_group in dev_optimizer.param_groups:
                     param_group['lr'] = dev_lr
-                print(dev_lr)
             # begin training
             dev_model.train()               # set model into training
-            for train_x, train_label in cifar100_training_loader:
+            for train_x, train_label in cifar10_training_loader:
                 # move train data to device
                 train_x = train_x.to(device)
                 train_label = train_label.to(device)
@@ -142,7 +129,7 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                 # begin testing
                 dev_model.eval()
                 with torch.no_grad():
-                    for test_x, test_label in cifar100_test_loader:
+                    for test_x, test_label in cifar10_test_loader:
                         # move test data to device
                         test_x = test_x.to(device)
                         test_label = test_label.to(device)
@@ -155,8 +142,8 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy, gener
                         top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
                         correct_5 += top5_correct.any(dim=1).sum().item()
                     # calculate the accuracy and print it
-                    top1_accuracy = correct_1 / len(cifar100_test_loader.dataset)
-                    top5_accuracy = correct_5 / len(cifar100_test_loader.dataset)
+                    top1_accuracy = correct_1 / len(cifar10_test_loader.dataset)
+                    top5_accuracy = correct_5 / len(cifar10_test_loader.dataset)
                     dev_top1_accuracies.append(top1_accuracy)
                     dev_top5_accuracies.append(top5_accuracy)
         # store the model and score
@@ -209,33 +196,37 @@ def compute_score(model_list, top1_accuracy_list, top3_accuracy_list, FLOPs_list
 if __name__ == '__main__':
     # move the LeNet Module into the corresponding device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
     lr = 0.1
+    gamma = 0.2
+    current_lr = lr * gamma * gamma * gamma
     warm = 1
-    batch_size = 128
+    batch_size = 256
+    generate_num = settings.MAX_GENERATE_NUM
+    modification_num = settings.MAX_MODIFICATION_NUM
+    tolerance_times = settings.MAX_TOLERANCE_TIMES
+    dev_num = settings.DEV_NUM
+    accuracy_threshold = settings.ACCURACY_THRESHOLD
 
     # reinitialize random seed
     current_time = int(time.time())
     torch.manual_seed(current_time)
     print('Start with random seed %d' %current_time)
-    
-    tolerance_times = max_tolerance_times
-    current_lr = lr
 
-    net = VGG().to(device)
+    net = torch.load('models/VGG_Original_1710611781.pkl')  # replace it with the model gained by train_original.py
+    net = net.to(device)
 
     #data preprocessing:
-    cifar100_training_loader = get_training_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
+    cifar10_training_loader = get_CIFAR10_training_dataloader(
+        settings.CIFAR10_TRAIN_MEAN,
+        settings.CIFAR10_TRAIN_STD,
         num_workers=4,
         batch_size=batch_size,
         shuffle=True
     )
 
-    cifar100_test_loader = get_test_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
+    cifar10_test_loader = get_CIFAR10_test_dataloader(
+        settings.CIFAR10_TRAIN_MEAN,
+        settings.CIFAR10_TRAIN_STD,
         num_workers=4,
         batch_size=batch_size,
         shuffle=True
@@ -243,33 +234,27 @@ if __name__ == '__main__':
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
-    iter_per_epoch = len(cifar100_training_loader)
+    iter_per_epoch = len(cifar10_training_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
 
-    best_acc = 0.0
-
-    for epoch in range(1, settings.EPOCH + 1):
-        gamma = 0.2
-        if epoch in settings.MILESTONES:
-            current_lr *= gamma
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = current_lr
-            print(current_lr)
-
+    for epoch in range(1, settings.DYNAMIC_EPOCH + 1):
         train(epoch)
         top1_acc, top5_acc = eval_training(epoch)
 
         # dynamic generate architecture
-        if epoch >= 100 and epoch % 10 == 0:
-            if tolerance_times > 0:
-                net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc], generate_num, dev_num))
+        if epoch % 10 == 0:
+            if tolerance_times >= 0:
+                net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc]))
+                net = net.to(device)
                 if model_index == 0:
                     tolerance_times -= 1
-                    models.vgg.max_modification_num -= 100
+                    modification_num /= 2
                     generate_num += 1
-                    # models.vgg.kernel_neuron_proportion *= 0.6
                 optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
-                print(current_lr)
+                # save the module
+                if not os.path.isdir("models"):
+                    os.mkdir("models")
+                torch.save(net, 'models/VGG_Compressed_{:d}.pkl'.format(current_time))
             else:
                 # save the module
                 if not os.path.isdir("models"):
@@ -279,7 +264,7 @@ if __name__ == '__main__':
 
 
         # save the model when training end
-        if epoch == settings.EPOCH:
+        if epoch == settings.DYNAMIC_EPOCH:
             # save the module
             if not os.path.isdir("models"):
                 os.mkdir("models")

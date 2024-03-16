@@ -1,14 +1,15 @@
 import torch
 from conf import settings
-from utils import get_CIFAR10_test_dataloader
+from utils import get_network, get_test_dataloader
 
 from thop import profile
+
 
 # move the LeNet Module into the corresponding device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def test():
-    cifar100_test_loader = get_CIFAR10_test_dataloader(
+    cifar100_test_loader = get_test_dataloader(
         settings.CIFAR100_TRAIN_MEAN,
         settings.CIFAR100_TRAIN_STD,
         num_workers=4,
@@ -27,7 +28,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Original_1710611781.pkl')
+    model = torch.load('models/ResNet_Original_1710087132.pkl')
     model = model.to(device)
     model.eval()
     with torch.no_grad():
@@ -53,7 +54,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Compressed_1710615160.pkl')
+    model = torch.load('models/ResNet_Compressed_1710346448.pkl')
     model = model.to(device)
     print(model)
     model.eval()
