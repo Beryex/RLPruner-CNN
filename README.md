@@ -5,7 +5,6 @@ Research Supervisor:
 
 # Method Description
 ![MyMethod](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/Method.png)
-
 ## **To Do List**
 - Refine the hyperparameters for VGG-16 Model
 - Visualization of layers' feature capture in simplified LeNet-5 Model
