@@ -4,7 +4,7 @@ Research Supervisor:
 [Kindratenko Volodymyr](https://cs.illinois.edu/about/people/faculty/kindrtnk) @ University of Illinois at Urbana-Champaign
 
 # Method Description
-![MyMethod](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/Method.png)
+![MyMethod](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/Algorithm.png)
 ## **To Do List**
 - Refine the hyperparameters for VGG-16 Model
 - Visualization of layers' feature capture in simplified LeNet-5 Model
