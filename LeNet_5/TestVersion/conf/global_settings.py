@@ -1,44 +1,13 @@
-""" configurations for this project
+# global hyperparameter
+# for compression algorithm
+MAX_GENERATE_NUM = 2        # for each updates, how many potential architecture we are going to generate
+MAX_TOLERANCE_TIMES = 3     # for each training, how many updates we are going to apply before we get the final architecture
+MAX_MODIFICATION_NUM = 40   # max update numbers, that is max modification we make to architecture in update_architecture
+DEV_NUM = 16                # for each potential architecture, how many epochs we are going to train it
+ACCURACY_THRESHOLD = 0.989  # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
 
-author baiyu
-"""
-import os
-from datetime import datetime
-
-#CIFAR100 dataset path (python version)
-#CIFAR100_PATH = '/nfs/private/cifar100/cifar-100-python'
-
-#mean and std of cifar100 dataset
-CIFAR100_TRAIN_MEAN = (0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
-CIFAR100_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
-
-#CIFAR100_TEST_MEAN = (0.5088964127604166, 0.48739301317401956, 0.44194221124387256)
-#CIFAR100_TEST_STD = (0.2682515741720801, 0.2573637364478126, 0.2770957707973042)
-
-#directory to save weights file
-CHECKPOINT_PATH = 'checkpoint'
-
-#total training epoches
-EPOCH = 300
-MILESTONES = [40, 80, 100]
-
-#initial learning rate
-#INIT_LR = 0.1
-
-DATE_FORMAT = '%A_%d_%B_%Y_%Hh_%Mm_%Ss'
-#time of we run the script
-TIME_NOW = datetime.now().strftime(DATE_FORMAT)
-
-#tensorboard log dir
-LOG_DIR = 'runs'
-
-#save weights file per SAVE_EPOCH epoch
-SAVE_EPOCH = 10
-
-
-
-
-
-
-
-
+# for training parameters
+ORIGINAL_EPOCH = 20
+DYNAMIC_EPOCH = 300
+ORIGINAL_MILESTONES = [10, 16]
+DYNAMIC_MILESTONES = [8, 12]
