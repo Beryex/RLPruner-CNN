@@ -53,7 +53,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Compressed_1710615160.pkl')
+    model = torch.load('models/VGG_Compressed_1710626752.pkl')
     model = model.to(device)
     print(model)
     model.eval()

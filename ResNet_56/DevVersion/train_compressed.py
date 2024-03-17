@@ -97,6 +97,7 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
         dev_model = copy.deepcopy(original_model)
         ResNet.update_architecture(dev_model, modification_num)
         dev_model = dev_model.to(device)
+        print(dev_model)
         dev_lr = lr
         dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
         dev_top1_accuracies = []
@@ -213,7 +214,7 @@ if __name__ == '__main__':
     torch.manual_seed(current_time)
     print('Start with random seed %d' %current_time)
 
-    net = torch.load('models/ResNet_Compressed_1710346448.pkl')     # replace it with the model gained by train_original.py
+    net = torch.load('models/ResNet_Original_1710645767.pkl')     # replace it with the model gained by train_original.py
     net = net.to(device)
 
     #data preprocessing:
@@ -255,7 +256,7 @@ if __name__ == '__main__':
                 # save the module
                 if not os.path.isdir("models"):
                     os.mkdir("models")
-                torch.save(net, 'models/VGG_Compressed_{:d}.pkl'.format(current_time))
+                torch.save(net, 'models/ResNet_Compressed_{:d}.pkl'.format(current_time))
             else:
                 # save the module
                 if not os.path.isdir("models"):

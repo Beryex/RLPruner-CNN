@@ -73,6 +73,7 @@ if __name__ == '__main__':
     batch_size = 128
 
     net = ResNet(num_class=10).to(device)
+    print(net)
 
     #data preprocessing:
     cifar10_training_loader = get_CIFAR10_training_dataloader(
