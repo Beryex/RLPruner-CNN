@@ -24,4 +24,4 @@ python test.py
 to see the compressed model's architecture, the compressed ratio and corresponding accuracy.
 
 ## Results
-
+![CurrentResult](https://github.com/Beryex/UIUC-ECE397/blob/main/Figures%20for%20Visualization/Current%20Result.png)
