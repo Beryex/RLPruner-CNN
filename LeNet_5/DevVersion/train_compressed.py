@@ -99,6 +99,7 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy):
         dev_model = dev_model.to(device)
         dev_lr = lr
         dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
+        dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
         dev_top1_accuracies = []
         dev_top3_accuracies = []
         # train the architecture for dev_num times
@@ -121,6 +122,9 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy):
                 # update visualization
                 loss.backward()
                 dev_optimizer.step()
+
+                if dev_id <= warm:
+                    dev_warmup_scheduler.step()
             
             # discard the first half data as model need retraining
             if (dev_id + 1) % dev_num >= math.ceil(dev_num / 2):

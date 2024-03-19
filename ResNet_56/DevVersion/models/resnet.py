@@ -178,7 +178,7 @@ class ResNet(nn.Module):
             if torch.rand(1).item() < 0.00:
                 self.prune_kernel()
             else:
-                if torch.rand(1).item() <= 0.98:
+                if torch.rand(1).item() <= 0.99:
                     self.prune_mediate_blocks()
                 else:
                     decre_num = self.prune_output_blocks()
@@ -224,6 +224,7 @@ class ResNet(nn.Module):
         else:
             block_choices =  torch.tensor([2, 3, 4, 5, 6, 7])
         target_block = torch.randint(0, len(block_choices), (1,)).item()
+        target_block = block_choices[target_block].item()
         target_block = target_branch[target_block]
         target_block.prune_mediate_kernel()
     

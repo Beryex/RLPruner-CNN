@@ -1,6 +1,6 @@
 import torch
 from conf import settings
-from utils import get_network, get_test_dataloader
+from utils import get_CIFAR10_test_dataloader
 
 from thop import profile
 
