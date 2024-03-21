@@ -127,7 +127,7 @@ def test():
     top3_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/LeNet_Compressed_1710608313.pkl')
+    model = torch.load('models/LeNet_Compressed_1710861836.pkl')
     model = model.to(device)
     print(model)
     model.eval()

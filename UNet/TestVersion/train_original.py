@@ -8,7 +8,7 @@ import torch.optim as optim
 from conf import settings
 from utils import get_CIFAR10_training_dataloader, get_CIFAR10_test_dataloader, get_CIFAR100_training_dataloader, get_CIFAR100_test_dataloader, WarmUpLR
 
-from models.vgg import VGG
+from models.resnet import ResNet
 
 def train(epoch):
 
@@ -72,10 +72,10 @@ if __name__ == '__main__':
     warm = 1
     batch_size = 128
 
-    net = VGG(num_class=100).to(device)
+    net = ResNet(num_class=10).to(device)
 
     #data preprocessing:
-    cifar10_training_loader = get_CIFAR100_training_dataloader(
+    cifar10_training_loader = get_CIFAR10_training_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    cifar10_test_loader = get_CIFAR100_test_dataloader(
+    cifar10_test_loader = get_CIFAR10_test_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -108,6 +108,7 @@ if __name__ == '__main__':
             current_lr *= gamma
             for param_group in optimizer.param_groups:
                 param_group['lr'] = current_lr
+            print(current_lr)
 
         train(epoch)
         acc = eval_training(epoch)
@@ -117,5 +118,5 @@ if __name__ == '__main__':
             # save the module
             if not os.path.isdir("models"):
                 os.mkdir("models")
-            torch.save(net, 'models/VGG_Original_{:d}.pkl'.format(current_time))
+            torch.save(net, 'models/ResNet_Original_{:d}.pkl'.format(current_time))
             continue
