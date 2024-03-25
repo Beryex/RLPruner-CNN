@@ -1,5 +1,7 @@
 import os
 import time
+import argparse
+import sys
 
 import numpy as np
 import torch
@@ -13,7 +15,6 @@ import copy
 import math
 from models.lenet import LeNet
 from thop import profile
-
 
 def train(epoch):
 
@@ -86,7 +87,6 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy):
     model_list.append(model)
     top1_accuracy_list.append(local_top1_accuracy)
     top3_accuracy_list.append(local_top3_accuracy)
-    input = torch.rand(256, 1, 32, 32).to(device)
     local_FLOPs, local_parameter_num = profile(model, inputs = (input, ), verbose=False)
     FLOPs_list.append(local_FLOPs)
     parameter_num_list.append(local_parameter_num)
@@ -99,6 +99,7 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy):
         dev_model = dev_model.to(device)
         dev_lr = lr
         dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
+        dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
         dev_top1_accuracies = []
         dev_top3_accuracies = []
         # train the architecture for dev_num times
@@ -121,6 +122,9 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy):
                 # update visualization
                 loss.backward()
                 dev_optimizer.step()
+
+                if dev_id <= warm:
+                    dev_warmup_scheduler.step()
             
             # discard the first half data as model need retraining
             if (dev_id + 1) % dev_num >= math.ceil(dev_num / 2):
@@ -154,15 +158,16 @@ def generate_architecture(model, local_top1_accuracy, local_top3_accuracy):
         dev_FLOPs, dev_parameter_num = profile(dev_model, inputs = (input, ), verbose=False)
         FLOPs_list.append(dev_FLOPs)
         parameter_num_list.append(dev_parameter_num)
+    global Para_compressed_ratio
     score_list = compute_score(model_list, top1_accuracy_list, top3_accuracy_list, FLOPs_list, parameter_num_list)
     best_model_index = np.argmax(score_list)
     best_model_FLOPs = FLOPs_list[best_model_index]
     best_model_Params = parameter_num_list[best_model_index]
-    FLOPs_compressed_ratio = best_model_FLOPs / local_FLOPs
-    Para_compressed_ratio = best_model_Params / local_parameter_num
+    FLOPs_compressed_ratio = best_model_FLOPs / original_FLOPs_num
+    Para_compressed_ratio = best_model_Params / original_para_num
     model = copy.deepcopy(model_list[best_model_index])
     print("model %d wins" %best_model_index)
-    print("This compression ratio: FLOPs: %f, Parameter number: %f" %(FLOPs_compressed_ratio, Para_compressed_ratio))
+    print("Current compression ratio: FLOPs: %f, Parameter number: %f" %(FLOPs_compressed_ratio, Para_compressed_ratio))
     return model, best_model_index
 
 
@@ -192,8 +197,34 @@ def compute_score(model_list, top1_accuracy_list, top3_accuracy_list, FLOPs_list
     print(score_list)
     return score_list
 
+def check_args(args):
+    if args.criteria == 'accuracy':
+        if args.compression_threshold is not None:
+            print("Error: --compression_threshold is not allowed when criteria is 'accuracy'")
+            sys.exit(1)
+    elif args.criteria == 'compression':
+        if args.accuracy_threshold is not None:
+            print("Error: --accuracy_threshold is not allowed when criteria is 'compression'")
+            sys.exit(1)
+    else:
+        print("Error: --criteria must be 'accuracy' or 'compression'")
+        sys.exit(1)
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description='Dynamic Compressing VGG16')
+    parser.add_argument('--criteria', '-c', type=str, default='accuracy', help='Compressed the model with accuracy_threshold or compression_threshold')
+    parser.add_argument('--accuracy_threshold', '-A', metavar='A', type=float, default=None, help='The final accuracy the architecture will achieve')
+    parser.add_argument('--compression_threshold', '-C', metavar='C', type=float, default=None, help='The final compression ratio the architecture will achieve')
+
+    args = parser.parse_args()
+    check_args(args)
+
+    return args
+
 
 if __name__ == '__main__':
+    args = get_args()
     # move the LeNet Module into the corresponding device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     lr = 0.1
@@ -204,7 +235,12 @@ if __name__ == '__main__':
     modification_num = settings.MAX_MODIFICATION_NUM
     tolerance_times = settings.MAX_TOLERANCE_TIMES
     dev_num = settings.DEV_NUM
-    accuracy_threshold = settings.ACCURACY_THRESHOLD
+    if args.criteria == 'accuracy':
+        accuracy_threshold = args.accuracy_threshold
+        compression_threshold = settings.DEFAULT_COMPRESSION_THRESHOLD
+    else:
+        accuracy_threshold = settings.DEFAULT_ACCURACY_THRESHOLD
+        compression_threshold = args.compression_threshold
 
     # reinitialize random seed
     current_time = int(time.time())
@@ -213,6 +249,10 @@ if __name__ == '__main__':
 
     net = torch.load('models/LeNet_Original_1710607419.pkl')  # replace it with the model gained by train_original.py
     net = net.to(device)
+
+    input = torch.rand(256, 1, 32, 32).to(device)
+    original_FLOPs_num, original_para_num = profile(net, inputs = (input, ), verbose=False)
+    Para_compressed_ratio = 1.000
 
     #data preprocessing:
     mnist_training_loader = get_MNIST_training_dataloader(
@@ -251,11 +291,19 @@ if __name__ == '__main__':
                     os.mkdir("models")
                 torch.save(net, 'models/LeNet_Compressed_{:d}.pkl'.format(current_time))
             else:
-                # save the module
-                if not os.path.isdir("models"):
-                    os.mkdir("models")
-                torch.save(net, 'models/LeNet_Compressed_{:d}.pkl'.format(current_time))
-                break
+                if args.criteria == 'compression' and Para_compressed_ratio >= compression_threshold:
+                    # decrement accuracy_threshold and reinitialize hyperparameter if criteria is compression ratio
+                    accuracy_threshold -= 0.05
+                    generate_num = settings.MAX_GENERATE_NUM
+                    modification_num = settings.MAX_MODIFICATION_NUM
+                    tolerance_times = settings.MAX_TOLERANCE_TIMES
+                    print('Current accuracy threshold is %f' %accuracy_threshold)
+                else:
+                    # save the module
+                    if not os.path.isdir("models"):
+                        os.mkdir("models")
+                    torch.save(net, 'models/LeNet_Compressed_{:d}.pkl'.format(current_time))
+                    break
 
 
         # save the model when training end

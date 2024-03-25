@@ -72,10 +72,10 @@ if __name__ == '__main__':
     warm = 1
     batch_size = 128
 
-    net = VGG(num_class=10).to(device)
+    net = VGG(num_class=100).to(device)
 
     #data preprocessing:
-    cifar10_training_loader = get_CIFAR10_training_dataloader(
+    cifar10_training_loader = get_CIFAR100_training_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    cifar10_test_loader = get_CIFAR10_test_dataloader(
+    cifar10_test_loader = get_CIFAR100_test_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,

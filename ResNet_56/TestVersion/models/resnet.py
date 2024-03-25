@@ -6,7 +6,7 @@ class BottleNeck(nn.Module):
 
     """
     expansion = 1
-    def __init__(self, in_channels, out_channels, stride=1):
+    def __init__(self, in_channels, out_channels, stride=1, short_cut=False):
         super().__init__()
         self.residual_function = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),
@@ -21,7 +21,7 @@ class BottleNeck(nn.Module):
 
         self.shortcut = nn.Sequential()
 
-        if stride != 1 or in_channels != out_channels * BottleNeck.expansion:
+        if stride != 1 or in_channels != out_channels * BottleNeck.expansion or short_cut == True:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels * BottleNeck.expansion, stride=stride, kernel_size=1, bias=False),
                 nn.BatchNorm2d(out_channels * BottleNeck.expansion)
@@ -126,7 +126,7 @@ class BottleNeck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, num_classes=100):
+    def __init__(self, num_class=100):
         super().__init__()
 
         self.in_channels = 16
@@ -141,15 +141,18 @@ class ResNet(nn.Module):
         self.conv3_x = self._make_layer(BottleNeck, 32, 9, 2)
         self.conv4_x = self._make_layer(BottleNeck, 64, 9, 2)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(64, num_classes)
+        self.fc = nn.Linear(64, num_class)
 
     def _make_layer(self, block, out_channels, num_blocks, stride):
         # we have num_block blocks per layer, the first block
         # could be 1 or 2, other blocks would always be 1
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
-        for stride in strides:
-            layers.append(block(self.in_channels, out_channels, stride))
+        for stride_idx in range(len(strides)):
+            if stride_idx == 0:
+                layers.append(block(self.in_channels, out_channels, strides[stride_idx], short_cut=True))
+            else:
+                layers.append(block(self.in_channels, out_channels, strides[stride_idx], short_cut=False))
             self.in_channels = out_channels * block.expansion
 
         return nn.Sequential(*layers)
@@ -167,14 +170,18 @@ class ResNet(nn.Module):
 
     def update_architecture(self, modification_num):
         update_times = int(modification_num + 1)
+        decre_num = 0
         for update_id in range(update_times):
-            if torch.rand(1).item() < 0.02:
+            if decre_num > 0:
+                decre_num -= 1
+                continue
+            if torch.rand(1).item() < 0.00:
                 self.prune_kernel()
             else:
-                if torch.rand(1).item() <= 5 / 6:
+                if torch.rand(1).item() <= 0.99:
                     self.prune_mediate_blocks()
                 else:
-                    self.prune_output_blocks()
+                    decre_num = self.prune_output_blocks()
 
     def prune_kernel(self):
         target_branch = self.conv1
@@ -204,13 +211,21 @@ class ResNet(nn.Module):
         self.conv2_x[0].decre_input(target_kernel)
 
     def prune_mediate_blocks(self):
-        target_block = torch.randint(1, 28, (1,)).item()
-        if target_block <= 9:
-            target_block = self.conv2_x[target_block - 1]
-        elif target_block <= 18:
-            target_block = self.conv3_x[target_block - 9 - 1]
+        target_branch = torch.randint(1, 4, (1,)).item()
+        if target_branch == 1:
+            target_branch = self.conv2_x
+        elif target_branch == 2:
+            target_branch = self.conv3_x
         else:
-            target_block = self.conv4_x[target_block - 18 - 1]
+            target_branch = self.conv4_x
+        if torch.rand(1).item() < 0.02:
+            # low probabilit to prune sensitive layer
+            block_choices =  torch.tensor([1, 8])
+        else:
+            block_choices =  torch.tensor([2, 3, 4, 5, 6, 7])
+        target_block = torch.randint(0, len(block_choices), (1,)).item()
+        target_block = block_choices[target_block].item()
+        target_block = target_branch[target_block]
         target_block.prune_mediate_kernel()
     
     def prune_output_blocks(self):
@@ -251,5 +266,4 @@ class ResNet(nn.Module):
                 new_fc1.weight.data = torch.cat([self.fc.weight.data[:, :start_index], self.fc.weight.data[:, end_index:]], dim=1)
                 new_fc1.bias.data = self.fc.bias.data
             self.fc = new_fc1
-        print(len(list(target_branch.children())))
         return len(list(target_branch.children()))
