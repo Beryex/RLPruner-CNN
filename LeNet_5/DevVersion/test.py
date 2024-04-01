@@ -6,11 +6,10 @@ from torchvision import transforms
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from thop import profile
+from tqdm import tqdm
+import logging
+
 from utils import get_CIFAR10_test_dataloader, get_MNIST_test_dataloader
-
-
-# move the LeNet Module into the corresponding device
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def save_img(data, save_path):
     for i in tqdm(range(len(data))):
@@ -104,7 +103,7 @@ def test():
     model = torch.load('models/LeNet_Original_1710607419.pkl')
     model = model.to(device)
     model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         for idx, (test_x, test_label) in enumerate(mnist_test_loader):
             # move test data to device
             test_x = test_x.to(device)
@@ -118,8 +117,9 @@ def test():
     # calculate the accuracy and print it
     top1_accuracy = top1_correct_num / len(mnist_test_loader.dataset)
     top3_accuracy = top3_correct_num / len(mnist_test_loader.dataset)
-    print('Original model has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
     original_FLOPs_num, original_para_num = profile(model, inputs = (input, ), verbose=False)
+    logging.info('Original model has top1 accuracy: {}, top5 accuracy: {}'.format(top1_accuracy, top3_accuracy))
+    logging.info('Original model has FLOPs: {}, Parameter Num: {}'.format(original_FLOPs_num, original_para_num))
         
     
     # initialize the testing parameters
@@ -129,7 +129,6 @@ def test():
     # begin testing
     model = torch.load('models/LeNet_Compressed_1710861836.pkl')
     model = model.to(device)
-    print(model)
     model.eval()
     with torch.no_grad():
         for idx, (test_x, test_label) in enumerate(mnist_test_loader):
@@ -145,17 +144,22 @@ def test():
     # calculate the accuracy and print it
     top1_accuracy = top1_correct_num / len(mnist_test_loader.dataset)
     top3_accuracy = top3_correct_num / len(mnist_test_loader.dataset)
-    print('Compressed Model has top1 accuracy: %f, top3 accuracy: %f' %(top1_accuracy, top3_accuracy))
     compressed_FLOPs_num, compressed_para_num = profile(model, inputs = (input, ), verbose=False)
+    logging.info('Compressed model has top1 accuracy: {}, top5 accuracy: {}'.format(top1_accuracy, top3_accuracy))
+    logging.info('Compressed model has FLOPs: {}, Parameter Num: {}'.format(compressed_FLOPs_num, compressed_para_num))
     
     # get compressed ratio
     FLOPs_compressed_ratio = compressed_FLOPs_num / original_FLOPs_num
     Para_compressed_ratio = compressed_para_num / original_para_num
-    print('Original FLOPs: %f, Parameter Num: %f' %(original_FLOPs_num, original_para_num))
-    print('Compressed FLOPs: %f, Parameter Num: %f' %(compressed_FLOPs_num, compressed_para_num))
-    print('We achieve FLOPS compressed ratio: %f, parameter number compressed ratio: %f' %(FLOPs_compressed_ratio, Para_compressed_ratio))
+    logging.info('FLOPS compressed ratio: {}, Parameter Num compressed ratio: {}'.format(FLOPs_compressed_ratio, Para_compressed_ratio))
+    # print model
+    print(model)
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+    # move the LeNet Module into the corresponding device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     '''test_data = datasets.MNIST(root="./uncompressed_data/", train=False, download=True)
     saveDirTest = './DataImages-Test'
     if not os.path.exists(saveDirTest):

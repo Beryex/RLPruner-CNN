@@ -115,14 +115,11 @@ class VGG(nn.Module):
     # define the function to resize the architecture kernel number
     def update_architecture(self, modification_num):
         update_times = int(modification_num + 1)
-        print(update_times)
         for update_id in range(update_times):
             if torch.rand(1).item() < 0.5:
                 self.prune_kernel()
             else:
                 self.prune_neuron()
-        if torch.rand(1).item() < 0:
-            self.change_activation_function()
 
 
     def prune_kernel(self):

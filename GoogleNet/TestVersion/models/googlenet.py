@@ -156,7 +156,6 @@ class Inception(nn.Module):
 
 
 class GoogleNet(nn.Module):
-
     def __init__(self, num_class=100):
         super().__init__()
         self.prelayer = nn.Sequential(
