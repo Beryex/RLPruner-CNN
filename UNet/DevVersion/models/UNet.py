@@ -58,12 +58,18 @@ class double_conv2d_bn(nn.Module):
     def decre_input(self, target_kernel, is_crossing = False, input_offset = 0):
         target_branch = self.double_conv
         if is_crossing == True:
-            # for the feature when we need to match exact kernel for encoder, which accepts two output of decoder
-            target_kernel += (target_branch[0].in_channels // 2) * input_offset
+            # if is_crossing is true, it means we are pruning input channels from corresponding encoder
+            target_kernel += target_branch[0].in_channels - input_offset
         new_conv1 = nn.Conv2d(target_branch[0].in_channels - 1, target_branch[0].out_channels, kernel_size=target_branch[0].kernel_size, stride = target_branch[0].stride, padding = target_branch[0].padding, bias=False)
         with torch.no_grad():
             kept_indices = [i for i in range(target_branch[0].in_channels) if i != target_kernel]
             new_conv1.weight.data = target_branch[0].weight.data[:, kept_indices, :, :]
+            if new_conv1.weight.data.shape[1] != new_conv1.in_channels:
+                print("ERROR")
+                print(target_kernel)
+                print(len(kept_indices))
+                print(new_conv1.weight.data.shape[1])
+                print(new_conv1.in_channels)
         target_branch[0] = new_conv1
 
     
@@ -92,6 +98,8 @@ class Decoder(nn.Module):
         super().__init__()
         self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
         self.conv = double_conv2d_bn(in_channels, out_channels)
+        # need to store the value of input channels from corresponding encoder
+        self.encoder_channels = in_channels // 2
         
     def forward(self, x1, x2):
         x1 = self.up(x1)
@@ -106,10 +114,10 @@ class Decoder(nn.Module):
     
     def prune_kernel(self):
         # has lower probability to prune up as it changes feature map dimension, which is more sensitive
-        if torch.rand(1).item() < 1:
+        if torch.rand(1).item() < 0.05:
             target_sequential = self.up
             new_conv1_kernel_num = target_sequential.out_channels - 1
-            if new_conv1_kernel_num <= 1:
+            if new_conv1_kernel_num == 0:
                 return None
             new_convtransposed1 = nn.ConvTranspose2d(target_sequential.in_channels, new_conv1_kernel_num, kernel_size=target_sequential.kernel_size, stride = target_sequential.stride)
             weight_variances = torch.var(target_sequential.weight.data, dim = [0, 2, 3])
@@ -121,7 +129,7 @@ class Decoder(nn.Module):
             self.up = new_convtransposed1
 
             # then decrement next sequential's input
-            self.conv.decre_input(target_kernel, is_crossing=False, input_offset=0)
+            self.conv.decre_input(target_kernel, is_crossing=False)
             return None
         else:
             target_sequential = self.conv
@@ -162,19 +170,6 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
         x5 = self.down4(x4)
-        '''print(self.up1.up.weight.shape)
-        print(self.up2.up.weight.shape)
-        print(self.up3.up.weight.shape)
-        print(self.up4.up.weight.shape)
-        print(self.up1.conv.double_conv[0].weight.shape)
-        print(self.up2.conv.double_conv[0].weight.shape)
-        print(self.up3.conv.double_conv[0].weight.shape)
-        print(self.up4.conv.double_conv[0].weight.shape)
-        print(x1.shape)
-        print(x2.shape)
-        print(x3.shape)
-        print(x4.shape)
-        print(x5.shape)'''
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
@@ -196,7 +191,8 @@ class UNet(nn.Module):
         target_kernel = target_sequential.prune_kernel()
         if target_kernel != None:
             self.down1.decre_input(target_kernel, is_crossing=False, input_offset=0)
-            self.up4.conv.decre_input(target_kernel, is_crossing=True, input_offset=1)
+            self.up4.conv.decre_input(target_kernel, is_crossing=True, input_offset=self.up4.encoder_channels)
+            self.up4.encoder_channels -= 1
 
     def prune_encoder_decoder(self):
         # equal probability to prune encoder and decoder
@@ -213,7 +209,8 @@ class UNet(nn.Module):
                 target_kernel = target_encoder.prune_kernel()
                 if target_kernel != None:
                     next_encoder.decre_input(target_kernel, is_crossing=False, input_offset=0)
-                    corresponding_decoder.conv.decre_input(target_kernel, is_crossing=True, input_offset=1)
+                    corresponding_decoder.conv.decre_input(target_kernel, is_crossing=True, input_offset=corresponding_decoder.encoder_channels)
+                    corresponding_decoder.encoder_channels -= 1
             elif target_encoder == 2:
                 target_encoder = self.down2
                 next_encoder = self.down3
@@ -222,7 +219,8 @@ class UNet(nn.Module):
                 target_kernel = target_encoder.prune_kernel()
                 if target_kernel != None:
                     next_encoder.decre_input(target_kernel, is_crossing=False, input_offset=0)
-                    corresponding_decoder.conv.decre_input(target_kernel, is_crossing=True, input_offset=1)
+                    corresponding_decoder.conv.decre_input(target_kernel, is_crossing=True, input_offset=corresponding_decoder.encoder_channels)
+                    corresponding_decoder.encoder_channels -= 1
             elif target_encoder == 3:
                 target_encoder = self.down3
                 next_encoder = self.down4
@@ -231,7 +229,8 @@ class UNet(nn.Module):
                 target_kernel = target_encoder.prune_kernel()
                 if target_kernel != None:
                     next_encoder.decre_input(target_kernel, is_crossing=False, input_offset=0)
-                    corresponding_decoder.conv.decre_input(target_kernel, is_crossing=True, input_offset=1)
+                    corresponding_decoder.conv.decre_input(target_kernel, is_crossing=True, input_offset=corresponding_decoder.encoder_channels)
+                    corresponding_decoder.encoder_channels -= 1
             else:
                 target_encoder = self.down4
                 corresponding_decoder = self.up1
