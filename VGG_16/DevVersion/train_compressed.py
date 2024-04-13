@@ -13,12 +13,12 @@ import math
 from thop import profile
 
 from conf import settings
-from utils import get_CIFAR10_training_dataloader, get_CIFAR10_test_dataloader, get_CIFAR100_training_dataloader, get_CIFAR100_test_dataloader, WarmUpLR
+from utils import get_CIFAR10_training_dataloader, get_CIFAR10_test_dataloader, get_CIFAR10_dev_training_dataloader, get_CIFAR100_training_dataloader, get_CIFAR100_test_dataloader, get_CIFAR100_dev_training_dataloader, WarmUpLR
 from models.vgg import VGG
 
 def train(epoch):
     net.train()
-    with tqdm(total=len(cifar10_training_loader), desc=f'Epoch {epoch}/{settings.DYNAMIC_EPOCH}', unit='img') as pbar:
+    with tqdm(total=len(cifar10_training_loader.dataset), desc=f'Epoch {epoch}/{settings.DYNAMIC_EPOCH}', unit='img') as pbar:
         for batch_index, (images, labels) in enumerate(cifar10_training_loader):
             labels = labels.to(device)
             images = images.to(device)
@@ -28,7 +28,7 @@ def train(epoch):
             loss.backward()
             optimizer.step()
 
-            pbar.update(1)
+            pbar.update(images.shape[0])
             pbar.set_postfix(**{'loss (batch)': loss.item()})
 
 @torch.inference_mode()
@@ -69,79 +69,72 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
     FLOPs_list.append(local_FLOPs)
     parameter_num_list.append(local_parameter_num)
 
-    original_model = copy.deepcopy(model)
-    for model_id in range(generate_num):
-        with tqdm(total=generate_num, desc=f'Generated architectures', unit='model') as pbar1:
-            # generate architecture
-            dev_model = copy.deepcopy(original_model)
-            VGG.update_architecture(dev_model, modification_num)
-            dev_model = dev_model.to(device)
-            dev_lr = lr
-            dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
-            dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
-            dev_top1_accuracies = []
-            dev_top5_accuracies = []
-            # train the architecture for dev_num times
-            for dev_id in range(1, dev_num + 1):
-                with tqdm(total=len(cifar10_training_loader), desc=f'Dev Epoch {dev_id}/{dev_num} for architecture {model_id}', unit='img') as pbar2:
-                    if dev_id in settings.DYNAMIC_MILESTONES:
-                        dev_lr *= gamma
-                        for param_group in dev_optimizer.param_groups:
-                            param_group['lr'] = dev_lr
-                    # begin training
-                    dev_model.train()               # set model into training
-                    for train_x, train_label in cifar10_training_loader:
-                        # move train data to device
-                        train_x = train_x.to(device)
-                        train_label = train_label.to(device)
-                        # clear the gradient data and update parameters based on error
-                        dev_optimizer.zero_grad()
-                        # get predict y and compute the error
-                        predict_y = dev_model(train_x)
-                        loss = loss_function(predict_y, train_label)
-                        # update visualization
-                        loss.backward()
-                        dev_optimizer.step()
+    # generate architecture
+    dev_model = copy.deepcopy(get_best_generated_architecture(model))
+    dev_model = dev_model.to(device)
+    dev_lr = lr
+    dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
+    dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
+    dev_top1_accuracies = []
+    dev_top5_accuracies = []
+    # train the architecture for dev_num times
+    for dev_id in range(1, dev_num + 1):
+        if dev_id in settings.DYNAMIC_MILESTONES:
+            dev_lr *= gamma
+            for param_group in dev_optimizer.param_groups:
+                param_group['lr'] = dev_lr
+        # begin training
+        dev_model.train()               # set model into training
+        with tqdm(total=len(cifar10_training_loader.dataset), desc=f'Training best generated Architecture Epoch {dev_id}/{dev_num}', unit='img', leave=False) as pbar:
+            for train_x, train_label in cifar10_training_loader:
+                # move train data to device
+                train_x = train_x.to(device)
+                train_label = train_label.to(device)
+                # clear the gradient data and update parameters based on error
+                dev_optimizer.zero_grad()
+                # get predict y and compute the error
+                predict_y = dev_model(train_x)
+                loss = loss_function(predict_y, train_label)
+                # update visualization
+                loss.backward()
+                dev_optimizer.step()
 
-                        if dev_id <= warm:
-                            dev_warmup_scheduler.step()
-                        
-                        pbar2.update(train_x.shape[0])
-                        pbar2.set_postfix(**{'loss (batch)': loss.item()})
+                if dev_id <= warm:
+                    dev_warmup_scheduler.step()
                 
-                # discard the first half data as model need retraining
-                if (dev_id + 1) % dev_num >= math.ceil(dev_num / 2):
-                    # initialize the testing parameters
-                    correct_1 = 0.0
-                    correct_5 = 0.0
-                    # begin testing
-                    dev_model.eval()
-                    with torch.inference_mode():
-                        for test_x, test_label in cifar10_test_loader:
-                            # move test data to device
-                            test_x = test_x.to(device)
-                            test_label = test_label.to(device)
-                            # get predict y and predict its class
-                            outputs = dev_model(test_x)
-                            _, preds = outputs.topk(5, 1, largest=True, sorted=True)
-                            #compute top1
-                            correct_1 += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
-                            #compute top 5
-                            top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
-                            correct_5 += top5_correct.any(dim=1).sum().item()
-                        # calculate the accuracy and print it
-                        top1_accuracy = correct_1 / len(cifar10_test_loader.dataset)
-                        top5_accuracy = correct_5 / len(cifar10_test_loader.dataset)
-                        dev_top1_accuracies.append(top1_accuracy)
-                        dev_top5_accuracies.append(top5_accuracy)
-            pbar1.update(1)
-        # store the model and score
-        model_list.append(dev_model)
-        top1_accuracy_list.append(dev_top1_accuracies)
-        top5_accuracy_list.append(dev_top5_accuracies)
-        dev_FLOPs, dev_parameter_num = profile(dev_model, inputs = (input, ), verbose=False)
-        FLOPs_list.append(dev_FLOPs)
-        parameter_num_list.append(dev_parameter_num)
+                pbar.update(train_label.shape[0])
+                pbar.set_postfix(**{'loss (batch)': loss.item()})
+
+    # initialize the testing parameters
+    correct_1 = 0.0
+    correct_5 = 0.0
+    # begin testing
+    dev_model.eval()
+    with torch.inference_mode():
+        for test_x, test_label in cifar10_test_loader:
+            # move test data to device
+            test_x = test_x.to(device)
+            test_label = test_label.to(device)
+            # get predict y and predict its class
+            outputs = dev_model(test_x)
+            _, preds = outputs.topk(5, 1, largest=True, sorted=True)
+            #compute top1
+            correct_1 += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
+            #compute top 5
+            top5_correct = test_label.view(-1, 1).expand_as(preds) == preds
+            correct_5 += top5_correct.any(dim=1).sum().item()
+        # calculate the accuracy and print it
+        top1_accuracy = correct_1 / len(cifar10_test_loader.dataset)
+        top5_accuracy = correct_5 / len(cifar10_test_loader.dataset)
+        dev_top1_accuracies.append(top1_accuracy)
+        dev_top5_accuracies.append(top5_accuracy)
+    # store the model and score
+    model_list.append(dev_model)
+    top1_accuracy_list.append(dev_top1_accuracies)
+    top5_accuracy_list.append(dev_top5_accuracies)
+    dev_FLOPs, dev_parameter_num = profile(dev_model, inputs = (input, ), verbose=False)
+    FLOPs_list.append(dev_FLOPs)
+    parameter_num_list.append(dev_parameter_num)
     global Para_compressed_ratio
     score_list = compute_score(model_list, top1_accuracy_list, top5_accuracy_list, FLOPs_list, parameter_num_list)
     best_model_index = np.argmax(score_list)
@@ -150,9 +143,79 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
     FLOPs_compressed_ratio = best_model_FLOPs / original_FLOPs_num
     Para_compressed_ratio = best_model_Params / original_para_num
     model = copy.deepcopy(model_list[best_model_index])
-    logging.info('Model {} wins'.format(best_model_index))
+    if best_model_index == 0:
+        logging.info('Original Model wins')
+    else:
+        logging.info('Generated Model wins')
     logging.info('Current compression ratio: FLOPs: {}, Parameter number {}'.format(FLOPs_compressed_ratio, Para_compressed_ratio))
     return model, best_model_index
+
+
+def get_best_generated_architecture(model):
+    # initialize all evaluating variables
+    model_list = []
+    top1_pretrain_ccuracy_list = []
+
+    original_model = copy.deepcopy(model)
+    with tqdm(total=generate_num, desc=f'Generated architectures', unit='model', leave=False) as pbar:
+        for model_id in range(generate_num):
+            # generate architecture
+            dev_model = copy.deepcopy(original_model)
+            VGG.update_architecture(dev_model, modification_num)
+            dev_model = dev_model.to(device)
+            dev_lr = lr
+            dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
+            dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
+            # train the architecture for dev_num times
+            for dev_id in range(1, dev_pretrain_num + 1):
+                if dev_id in settings.DYNAMIC_PRETRAIN_MILESTONES:
+                    dev_lr *= gamma
+                    for param_group in dev_optimizer.param_groups:
+                        param_group['lr'] = dev_lr
+                # begin training
+                dev_model.train()               # set model into training
+                for train_x, train_label in cifar10_dev_training_loader:
+                    # move train data to device
+                    train_x = train_x.to(device)
+                    train_label = train_label.to(device)
+                    # clear the gradient data and update parameters based on error
+                    dev_optimizer.zero_grad()
+                    # get predict y and compute the error
+                    predict_y = dev_model(train_x)
+                    loss = loss_function(predict_y, train_label)
+                    # update visualization
+                    loss.backward()
+                    dev_optimizer.step()
+
+                    if dev_id <= warm:
+                        dev_warmup_scheduler.step()
+                
+            # initialize the testing parameters
+            correct_1 = 0.0
+            top1_accuracy = 0.0
+            # begin testing
+            dev_model.eval()
+            with torch.inference_mode():
+                for test_x, test_label in cifar10_test_loader:
+                    # move test data to device
+                    test_x = test_x.to(device)
+                    test_label = test_label.to(device)
+                    # get predict y and predict its class
+                    outputs = dev_model(test_x)
+                    _, preds = outputs.topk(5, 1, largest=True, sorted=True)
+                    #compute top1
+                    correct_1 += (preds[:, :1] == test_label.unsqueeze(1)).sum().item()
+                # calculate the accuracy and print it
+                top1_accuracy = correct_1 / len(cifar10_test_loader.dataset)
+            pbar.update(1)
+            # store the model and score
+            model_list.append(dev_model)
+            top1_pretrain_ccuracy_list.append(top1_accuracy)
+    best_model_index = np.argmax(top1_pretrain_ccuracy_list)
+    best_generated_model = copy.deepcopy(model_list[best_model_index])
+    logging.info('Pretrained Generated Model Top1 Accuracy List: {}'.format(top1_pretrain_ccuracy_list))
+    logging.info('Model {} wins'.format(best_model_index))
+    return best_generated_model
 
 
 def compute_score(model_list, top1_accuracy_list, top5_accuracy_list, FLOPs_list, parameter_num_list):
@@ -233,6 +296,7 @@ if __name__ == '__main__':
     modification_num = settings.MAX_MODIFICATION_NUM
     tolerance_times = settings.MAX_TOLERANCE_TIMES
     dev_num = settings.DEV_NUM
+    dev_pretrain_num = settings.DEV_PRETRAIN_NUM
     if args.criteria == 'accuracy':
         accuracy_threshold = args.accuracy_threshold
         compression_threshold = settings.DEFAULT_COMPRESSION_THRESHOLD
@@ -241,7 +305,7 @@ if __name__ == '__main__':
         compression_threshold = args.compression_threshold
 
     #data preprocessing:
-    cifar10_training_loader = get_CIFAR10_training_dataloader(
+    cifar10_training_loader = get_CIFAR100_training_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -249,7 +313,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    cifar10_test_loader = get_CIFAR10_test_dataloader(
+    cifar10_test_loader = get_CIFAR100_test_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -257,7 +321,15 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    net = torch.load('models/VGG_Original_1710611781.pkl')  # replace it with the model gained by train_original.py
+    cifar10_dev_training_loader = get_CIFAR100_dev_training_dataloader(
+        settings.CIFAR10_TRAIN_MEAN,
+        settings.CIFAR10_TRAIN_STD,
+        num_workers=4,
+        batch_size=batch_size,
+        shuffle=True
+    )
+
+    net = torch.load('models/VGG_Original_1710981252.pkl')  # replace it with the model gained by train_original.py
     net = net.to(device)
 
     input = torch.rand(128, 3, 32, 32).to(device)
@@ -274,7 +346,7 @@ if __name__ == '__main__':
         top1_acc, top5_acc = eval_training(epoch)
 
         # dynamic generate architecture
-        if epoch % 10 == 0:
+        if epoch % 5 == 0:
             if tolerance_times >= 0:
                 net, model_index = copy.deepcopy(generate_architecture(net, [top1_acc], [top5_acc]))
                 net = net.to(device)

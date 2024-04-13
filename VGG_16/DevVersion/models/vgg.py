@@ -142,6 +142,7 @@ class VGG(nn.Module):
         with torch.no_grad():
             new_conv1.weight.data = torch.cat([self.features['Conv' + str(target_layer)].weight.data[:target_kernel], self.features['Conv' + str(target_layer)].weight.data[target_kernel+1:]], dim=0)
         self.features['Conv' + str(target_layer)] = new_conv1
+        assert self.features['Conv' + str(target_layer)].out_channels == self.features['Conv' + str(target_layer)].weight.shape[0], f"Conv layer out channels ({self.features['Conv' + str(target_layer)].out_channels}) and weight dimension ({self.features['Conv' + str(target_layer)].weight.shape[0]}) not match"
 
         # update bn1
         new_bn1 = nn.BatchNorm2d(new_conv1_kernel_num)
@@ -152,6 +153,7 @@ class VGG(nn.Module):
             new_bn1.running_mean = self.features['bn' + str(target_layer)].running_mean[kept_indices]
             new_bn1.running_var = self.features['bn' + str(target_layer)].running_var[kept_indices]
         self.features['bn' + str(target_layer)] = new_bn1
+        assert self.features['bn' + str(target_layer)].num_features == self.features['bn' + str(target_layer)].weight.shape[0], f"bn layer out channels ({self.features['bn' + str(target_layer)].num_features}) and weight dimension ({self.features['bn' + str(target_layer)].weight.shape[0]}) not match"
 
         if target_layer < 13:
             # if not last Conv layer, update conv2
@@ -160,6 +162,7 @@ class VGG(nn.Module):
                 kept_indices = [i for i in range(self.features['Conv' + str(target_layer + 1)].in_channels) if i != target_kernel]
                 new_conv2.weight.data = self.features['Conv' + str(target_layer + 1)].weight.data[:, kept_indices, :, :]
             self.features['Conv' + str(target_layer + 1)] = new_conv2
+            assert self.features['Conv' + str(target_layer + 1)].in_channels == self.features['Conv' + str(target_layer + 1)].weight.shape[1], f"Conv layer in channels ({self.features['Conv' + str(target_layer + 1)].in_channels}) and weight dimension ({self.features['Conv' + str(target_layer + 1)].weight.shape[1]}) not match"
         else:
             # if so, update first FC layer
             output_length = 1 # gained by printing "output"
@@ -173,6 +176,7 @@ class VGG(nn.Module):
                 new_fc1.weight.data = torch.cat([self.classifier[0].weight.data[:, :start_index], self.classifier[0].weight.data[:, end_index:]], dim=1)
                 new_fc1.bias.data = self.classifier[0].bias.data
             self.classifier[0] = new_fc1
+            assert self.classifier[0].in_features == self.classifier[0].weight.shape[1], f"FC layer in channels ({self.classifier[0].in_features}) and weight dimension ({self.classifier[0].weight.shape[1]}) not match"
     
 
     def prune_neuron(self):
@@ -187,6 +191,7 @@ class VGG(nn.Module):
                 new_fc1.weight.data = torch.cat([self.classifier[0].weight.data[:target_neuron], self.classifier[0].weight.data[target_neuron+1:]], dim=0)
                 new_fc1.bias.data = torch.cat([self.classifier[0].bias.data[:target_neuron], self.classifier[0].bias.data[target_neuron+1:]])
             self.classifier[0] = new_fc1
+            assert self.classifier[0].out_features == self.classifier[0].weight.shape[0], f"FC layer out channels ({self.classifier[0].out_features}) and weight dimension ({self.classifier[0].weight.shape[0]}) not match"
 
             # update fc2
             new_fc2 = nn.Linear(self.classifier[0].out_features, self.classifier[3].out_features)
@@ -194,6 +199,7 @@ class VGG(nn.Module):
                 new_fc2.weight.data = torch.cat([self.classifier[3].weight.data[:, :target_neuron], self.classifier[3].weight.data[:, target_neuron+1:]], dim=1)
                 new_fc2.bias.data = self.classifier[3].bias.data
             self.classifier[3] = new_fc2
+            assert self.classifier[3].in_features == self.classifier[3].weight.shape[1], f"FC layer in channels ({self.classifier[3].in_features}) and weight dimension ({self.classifier[3].weight.shape[1]}) not match"
         else:
             new_fc2_output_features = self.classifier[3].out_features - 1
             if new_fc2_output_features == 0:
@@ -207,6 +213,7 @@ class VGG(nn.Module):
                 new_fc2.weight.data = torch.cat([self.classifier[3].weight.data[:target_neuron], self.classifier[3].weight.data[target_neuron+1:]], dim=0)
                 new_fc2.bias.data = torch.cat([self.classifier[3].bias.data[:target_neuron], self.classifier[3].bias.data[target_neuron+1:]])
             self.classifier[3] = new_fc2
+            assert self.classifier[3].out_features == self.classifier[3].weight.shape[0], f"FC layer out channels ({self.classifier[3].out_features}) and weight dimension ({self.classifier[3].weight.shape[0]}) not match"
 
             # update fc3
             new_fc3 = nn.Linear(self.classifier[3].out_features, self.classifier[6].out_features)
@@ -214,32 +221,4 @@ class VGG(nn.Module):
                 new_fc3.weight.data = torch.cat([self.classifier[6].weight.data[:, :target_neuron], self.classifier[6].weight.data[:, target_neuron+1:]], dim=1)
                 new_fc3.bias.data = self.classifier[6].bias.data
             self.classifier[6] = new_fc3
-
-    # update the conv1 activation function
-    def change_activation_function(self):
-        activation_funcs = 15
-        target_layer = torch.randint(low=1, high=activation_funcs + 1, size=(1,)).item()
-        p1 = torch.rand(1).item()
-        if target_layer <= 13:
-            # change convolution layer
-            if p1 < 0.33:
-                self.features['activation' + str(target_layer)] = torch.nn.ReLU(inplace=True)
-            elif p1 < 0.66:
-                self.features['activation' + str(target_layer)] = torch.nn.LeakyReLU(inplace=True)
-            else:
-                self.features['activation' + str(target_layer)] = torch.nn.ELU(inplace=True)
-        elif target_layer == 14:
-            # change fully connection layer
-            if p1 < 0.33:
-                self.classifier[1] = torch.nn.ReLU(inplace=True)
-            elif p1 < 0.66:
-                self.classifier[1] = torch.nn.LeakyReLU(inplace=True)
-            else:
-                self.classifier[1] = torch.nn.ELU(inplace=True)
-        else:
-            if p1 < 0.33:
-                self.classifier[4] = torch.nn.ReLU(inplace=True)
-            elif p1 < 0.66:
-                self.classifier[4] = torch.nn.LeakyReLU(inplace=True)
-            else:
-                self.classifier[4] = torch.nn.ELU(inplace=True)
+            assert self.classifier[6].in_features == self.classifier[6].weight.shape[1], f"FC layer in channels ({self.classifier[6].in_features}) and weight dimension ({self.classifier[6].weight.shape[1]}) not match"

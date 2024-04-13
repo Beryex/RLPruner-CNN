@@ -267,7 +267,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    net = torch.load('models/UNet_Compressed_1711942631.pkl')  # replace it with the model gained by train_original.py
+    net = torch.load('models/UNet_Compressed_1712001516.pkl')  # replace it with the model gained by train_original.py
     net = net.to(device).to(memory_format=torch.channels_last)
 
     input = torch.rand(1, 3, 640, 959).to(device)
@@ -281,9 +281,8 @@ if __name__ == '__main__':
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
     
     for epoch in range(1, settings.DYNAMIC_EPOCH + 1):
-        #train(epoch)
-        #val_score = eval_training(epoch)
-        val_score = 0
+        train(epoch)
+        val_score = eval_training(epoch)
 
         # dynamic generate architecture
         if epoch % 2 == 0:

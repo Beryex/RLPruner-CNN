@@ -13,7 +13,7 @@ def predict():
     in_file = '0cdf5b5d0ce1_14.jpg'
     out_file = '0cdf5b5d0ce1_14_Predict.jpg'
 
-    model = torch.load('models/UNet_Original_1711916918.pkl')
+    model = torch.load('models/UNet_Compressed_1712007552.pkl')
     model = model.to(device)
     model.eval()
 
@@ -64,7 +64,7 @@ def test():
     dice_score = 0.0
 
     # begin testing
-    model = torch.load('models/UNet_Original_1711916918.pkl')
+    model = torch.load('models/UNet_Original_1711995741.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():
@@ -89,7 +89,7 @@ def test():
     dice_score = 0.0
 
     # begin testing
-    model = torch.load('models/UNet_Compressed_1711942631.pkl')
+    model = torch.load('models/UNet_Compressed_1712007552.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():

@@ -60,6 +60,7 @@ class LeNet(nn.Module):
                 new_conv1.weight.data = torch.cat([self.conv1.weight.data[:target_kernel], self.conv1.weight.data[target_kernel+1:]], dim=0)
                 new_conv1.bias.data = torch.cat([self.conv1.bias.data[:target_kernel], self.conv1.bias.data[target_kernel+1:]], dim=0)
             self.conv1 = new_conv1
+            assert self.conv1.out_channels == self.conv1.weight.shape[0], "Conv layer out channels and weight dimension not match"
 
             # update conv2
             new_conv2 = nn.Conv2d(self.conv1.out_channels, self.conv2.out_channels, kernel_size=5)
@@ -68,6 +69,7 @@ class LeNet(nn.Module):
                 new_conv2.weight.data = self.conv2.weight.data[:, kept_indices, :, :]
                 new_conv2.bias.data = self.conv2.bias.data
             self.conv2 = new_conv2
+            assert self.conv2.out_channels == self.conv2.weight.shape[1], "Conv layer in channels and weight dimension not match"
         else:
             new_conv2_kernel_num = self.conv2.out_channels - 1
             if new_conv2_kernel_num == 0:
@@ -81,6 +83,7 @@ class LeNet(nn.Module):
                 new_conv2.weight.data = torch.cat([self.conv2.weight.data[:target_kernel], self.conv2.weight.data[target_kernel+1:]], dim=0)
                 new_conv2.bias.data = torch.cat([self.conv2.bias.data[:target_kernel], self.conv2.bias.data[target_kernel+1:]], dim=0)
             self.conv2 = new_conv2
+            assert self.conv2.out_channels == self.conv2.weight.shape[0], "Conv layer out channels and weight dimension not match"
 
             # update fc1
             output_length = 5 # gained by printing "output"
@@ -92,6 +95,7 @@ class LeNet(nn.Module):
                 new_fc1.weight.data = torch.cat((self.fc1.weight.data[:, :start_index], self.fc1.weight.data[:, end_index:]), dim=1)
                 new_fc1.bias.data = self.fc1.bias.data
             self.fc1 = new_fc1
+            assert self.fc1.in_features == self.fc1.weight.shape[1], "linear layer in channels and weight dimension not match"
     
 
     def prune_neuron(self):
@@ -106,6 +110,7 @@ class LeNet(nn.Module):
                 new_fc1.weight.data = torch.cat([self.fc1.weight.data[:target_neuron], self.fc1.weight.data[target_neuron+1:]], dim=0)
                 new_fc1.bias.data = torch.cat([self.fc1.bias.data[:target_neuron], self.fc1.bias.data[target_neuron+1:]])
             self.fc1 = new_fc1
+            assert self.fc1.out_features == self.fc1.weight.shape[0], "linear layer out channels and weight dimension not match"
 
             # update fc2
             new_fc2 = nn.Linear(self.fc1.out_features, self.fc2.out_features)
@@ -113,6 +118,7 @@ class LeNet(nn.Module):
                 new_fc2.weight.data = torch.cat([self.fc2.weight.data[:, :target_neuron], self.fc2.weight.data[:, target_neuron+1:]], dim=1)
                 new_fc2.bias.data = self.fc2.bias.data
             self.fc2 = new_fc2
+            assert self.fc2.in_features == self.fc2.weight.shape[1], "linear layer in channels and weight dimension not match"
         else:
             new_fc2_output_features = self.fc2.out_features - 1
             if new_fc2_output_features == 0:
@@ -126,6 +132,7 @@ class LeNet(nn.Module):
                 new_fc2.weight.data = torch.cat([self.fc2.weight.data[:target_neuron], self.fc2.weight.data[target_neuron+1:]], dim=0)
                 new_fc2.bias.data = torch.cat([self.fc2.bias.data[:target_neuron], self.fc2.bias.data[target_neuron+1:]])
             self.fc2 = new_fc2
+            assert self.fc2.out_features == self.fc2.weight.shape[0], "linear layer out channels and weight dimension not match"
 
             # update fc3
             new_fc3 = nn.Linear(self.fc2.out_features, self.fc3.out_features)
@@ -133,70 +140,4 @@ class LeNet(nn.Module):
                 new_fc3.weight.data = torch.cat([self.fc3.weight.data[:, :target_neuron], self.fc3.weight.data[:, target_neuron+1:]], dim=1)
                 new_fc3.bias.data = self.fc3.bias.data
             self.fc3 = new_fc3
-
-
-    # update the conv1 activation function
-    def change_activation_function(self):
-        p1 = torch.rand(1).item()
-        p2 = torch.rand(1).item()
-        if p1 < 0.2:
-            # change conv1
-            if p2 < 0.2:
-                self.conv1_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.conv1_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.conv1_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.conv1_activation_func = torch.nn.Sigmoid()
-            else:
-                self.conv1_activation_func = torch.nn.ELU()
-        elif p1 < 0.4:
-            # change conv2
-            if p2 < 0.2:
-                self.conv2_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.conv2_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.conv2_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.conv2_activation_func = torch.nn.Sigmoid()
-            else:
-                self.conv2_activation_func = torch.nn.ELU()
-        elif p1 < 0.6:
-            # change fc1
-            if p2 < 0.2:
-                self.fc1_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.fc1_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.fc1_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.fc1_activation_func = torch.nn.Sigmoid()
-            else:
-                self.fc1_activation_func = torch.nn.ELU()
-        elif p1 < 0.8:
-            # change fc2
-            if p2 < 0.2:
-                self.fc2_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.fc2_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.fc2_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.fc2_activation_func = torch.nn.Sigmoid()
-            else:
-                self.fc2_activation_func = torch.nn.ELU()
-        else:
-            # change fc3
-            if p2 < 0.2:
-                self.fc3_activation_func = torch.nn.ReLU()
-            elif p2 < 0.4:
-                self.fc3_activation_func = torch.nn.Tanh()
-            elif p2 < 0.6:
-                self.fc3_activation_func = torch.nn.LeakyReLU()
-            elif p2 < 0.8:
-                self.fc3_activation_func = torch.nn.Sigmoid()
-            else:
-                self.fc3_activation_func = torch.nn.ELU()
-                
+            assert self.fc3.in_features == self.fc3.weight.shape[1], "linear layer in channels and weight dimension not match"
