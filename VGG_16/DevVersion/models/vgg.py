@@ -1,224 +1,368 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+# from sklearn.cluster import KMeans
+import faiss
+
+
+class Custom_Conv2d(nn.Module):
+    def __init__(self, in_channels = None, out_channels = None, kernel_size = None, stride = 1, padding = 0, bias = True, base_conv_layer = None):
+        super(Custom_Conv2d, self).__init__()
+        if base_conv_layer == None:
+            if in_channels is None or out_channels is None or kernel_size is None:
+                raise ValueError("Custom_Conv2d requires in_channels, out_channels, and kernel_size when no base_conv_layer is provided")
+            temp_conv = nn.Conv2d(in_channels = in_channels, out_channels = out_channels, kernel_size = kernel_size, stride = stride, padding = padding, bias = bias)
+            self.in_channels = in_channels
+            self.out_channels = out_channels
+            self.kernel_size = kernel_size
+            self.weight = nn.Parameter(temp_conv.weight.data.detach())
+            self.weight_shape = temp_conv.weight.shape
+            if bias == True:
+                self.bias = nn.Parameter(temp_conv.bias.data.detach())
+            else:
+                self.bias = None
+            self.stride = stride
+            self.padding = padding
+        else:
+            if not isinstance(base_conv_layer, nn.Conv2d):
+                raise TypeError("base_conv_layer must be an instance of nn.Conv2d or its subclass")
+            self.in_channels = base_conv_layer.in_channels
+            self.out_channels = base_conv_layer.out_channels
+            self.kernel_size = base_conv_layer.kernel_size
+            self.weight = nn.Parameter(base_conv_layer.weight.data.detach())
+            self.weight_shape = base_conv_layer.weight.shape
+            if base_conv_layer.bias != None:
+                self.bias = nn.Parameter(base_conv_layer.bias.data.detach())
+            else:
+                self.bias = None
+            self.stride = base_conv_layer.stride
+            self.padding = base_conv_layer.padding
+        
+        self.weight_indices = None
+    
+    def forward(self, x):
+        if self.weight_indices == None:
+            actual_weight = self.weight
+        else:
+            actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
+        actual_weight = actual_weight.to(x.device)
+        return F.conv2d(x, actual_weight, self.bias, self.stride, self.padding)
+
+    def prune_kernel(self):
+        if self.weight_indices == None:
+            # weight is still normal, not cluster
+            if self.out_channels - 1 == 0:
+                return None
+            weight_variances = torch.var(self.weight.data, dim = [1, 2, 3])
+            target_kernel = torch.argmin(weight_variances).item()
+            with torch.no_grad():
+                self.weight.data = torch.cat([self.weight.data[:target_kernel], self.weight.data[target_kernel+1:]], dim=0)
+                if self.bias != None:
+                    self.bias.data = torch.cat([self.bias.data[:target_kernel], self.bias.data[target_kernel+1:]])
+            self.out_channels -= 1
+            if self.out_channels != self.weight.shape[0]:
+                raise ValueError("Conv2d layer out_channels and weight dimension mismath")
+            return target_kernel
+    
+    def decre_input(self, target_kernel):
+        with torch.no_grad():
+            kept_indices = [i for i in range(self.in_channels) if i != target_kernel]
+            self.weight.data = self.weight.data[:, kept_indices, :, :]
+        self.in_channels -= 1
+        if self.in_channels != self.weight.shape[1]:
+            raise ValueError("Conv2d layer in_channels and weight dimension mismath")
+
+    '''def quantization_hash_weights(self):
+        original_weights = self.weight.data.clone().view(-1, 1).cuda()
+        num_clusters = len(original_weights) // 2  # compress parameter to be half
+        initial_centers = torch.linspace(min(original_weights).item(), max(original_weights).item(), num_clusters).view(-1, 1).numpy()
+
+        kmeans = KMeans(n_clusters=num_clusters, init=initial_centers)
+        kmeans.fit(original_weights.numpy())
+        clustered_weights = torch.from_numpy(kmeans.cluster_centers_).float().squeeze()
+
+        self.weight_indices = torch.from_numpy(kmeans.labels_).long()
+        self.weight = nn.Parameter(clustered_weights)'''
+    
+    def quantization_hash_weights(self):
+        original_weights = self.weight.data.clone().view(-1, 1).cuda()
+        num_clusters = len(original_weights) // 2
+
+        original_weights_np = original_weights.cpu().numpy()
+
+        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=20, verbose=True, gpu=True)
+
+        kmeans.train(original_weights_np)
+
+        clustered_weights = torch.from_numpy(kmeans.centroids).float().cuda().squeeze()
+        labels = torch.from_numpy(kmeans.index.assign(original_weights_np)).long().cuda()
+
+        self.weight_indices = labels
+        self.weight = torch.nn.Parameter(clustered_weights)
+
+class Custom_Linear(nn.Module):
+    def __init__(self, in_features = None, out_features = None, bias = True, base_linear_layer = None):
+        super(Custom_Linear, self).__init__()
+        if base_linear_layer == None:
+            if in_features is None or out_features is None:
+                raise ValueError("Custom_Linear requires in_features, out_features when no base_linear_layer is provided")
+            temp_linear = nn.Linear(in_features = in_features, out_features = out_features, bias = bias)
+            self.in_features = in_features
+            self.out_features = out_features
+            self.weight = nn.Parameter(temp_linear.weight.data.detach())
+            self.weight_shape = temp_linear.weight.shape
+            if bias == True:
+                self.bias = nn.Parameter(temp_linear.bias.data.detach())
+            else:
+                self.bias = None
+        else:
+            if not isinstance(base_linear_layer, nn.Linear):
+                raise TypeError("base_linear_layer must be an instance of nn.Linear or its subclass")
+            self.weight = nn.Parameter(base_linear_layer.weight.data.detach())
+            self.weight_shape = base_linear_layer.weight.shape
+            if base_linear_layer.bias != None:
+                self.bias = nn.Parameter(base_linear_layer.bias.data.detach())
+            else:
+                self.bias = None
+
+        self.weight_indices = None
+    
+    def forward(self, x):
+        if self.weight_indices == None:
+            actual_weight = self.weight
+        else:
+            actual_weight = self.weight[self.weight_indices].view_as(self.weight_shape)
+        actual_weight = actual_weight.to(x.device)
+        return F.linear(x, actual_weight, self.bias)
+    
+    def prune_neuron(self):
+        if self.weight_indices == None:
+            # weight is still normal, not cluster
+            if self.out_features - 1 == 0:
+                return None
+            weight_variances = torch.var(self.weight.data, dim = 1)
+            target_neuron = torch.argmin(weight_variances).item()
+            with torch.no_grad():
+                self.weight.data = torch.cat([self.weight.data[:target_neuron], self.weight.data[target_neuron+1:]], dim=0)
+                if self.bias != None:
+                    self.bias.data = torch.cat([self.bias.data[:target_neuron], self.bias.data[target_neuron+1:]])
+            self.out_features -= 1
+            if self.out_features != self.weight.shape[0]:
+                raise ValueError("Linear layer out_channels and weight dimension mismath")
+            return target_neuron
+    
+    def decre_input(self, new_in_features, start_index, end_index):
+        with torch.no_grad():
+            self.weight.data = torch.cat([self.weight.data[:, :start_index], self.weight.data[:, end_index:]], dim=1)
+            self.bias.data = self.bias.data
+        self.in_features = new_in_features
+        if self.in_features != self.weight.shape[1]:
+            raise ValueError("Linear layer in_channels and weight dimension mismath")
+    
+    '''def quantization_hash_weights(self):
+        original_weights = self.weight.data.clone().view(-1, 1).cpu()
+        num_clusters = len(original_weights) // 2  # compress parameter to be half
+        initial_centers = torch.linspace(min(original_weights).item(), max(original_weights).item(), num_clusters).view(-1, 1).numpy()
+
+        kmeans = KMeans(n_clusters=num_clusters, init=initial_centers)
+        kmeans.fit(original_weights.numpy())
+        clustered_weights = torch.from_numpy(kmeans.cluster_centers_).float().squeeze()
+
+        self.weight_indices = torch.from_numpy(kmeans.labels_).long()
+        self.weight = nn.Parameter(clustered_weights)'''
+    
+    def quantization_hash_weights(self):
+        original_weights = self.weight.data.clone().view(-1, 1).cuda()
+        num_clusters = len(original_weights) // 2
+
+        original_weights_np = original_weights.cpu().numpy()
+
+        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=20, verbose=True, gpu=True)
+
+        kmeans.train(original_weights_np)
+
+        clustered_weights = torch.from_numpy(kmeans.centroids).float().cuda().squeeze()
+        labels = torch.from_numpy(kmeans.index.assign(original_weights_np)).long().cuda()
+
+        self.weight_indices = labels
+        self.weight = torch.nn.Parameter(clustered_weights)
+
 
 class VGG(nn.Module):
     def __init__(self, num_class=100):
         super().__init__()
-        self.features = nn.ModuleDict({
-            'Conv1': nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
-            'bn1': nn.BatchNorm2d(64),
-            'activation1': nn.ReLU(inplace=True),
-            'Conv2': nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            'bn2': nn.BatchNorm2d(64),
-            'activation2': nn.ReLU(inplace=True),
-            'pool1': nn.MaxPool2d(kernel_size=2, stride=2),
-            'Conv3': nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
-            'bn3': nn.BatchNorm2d(128),
-            'activation3': nn.ReLU(inplace=True),
-            'Conv4': nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
-            'bn4': nn.BatchNorm2d(128),
-            'activation4': nn.ReLU(inplace=True),
-            'pool2': nn.MaxPool2d(kernel_size=2, stride=2),
-            'Conv5': nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
-            'bn5': nn.BatchNorm2d(256),
-            'activation5': nn.ReLU(inplace=True),
-            'Conv6': nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
-            'bn6': nn.BatchNorm2d(256),
-            'activation6': nn.ReLU(inplace=True),
-            'Conv7': nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
-            'bn7': nn.BatchNorm2d(256),
-            'activation7': nn.ReLU(inplace=True),
-            'pool3': nn.MaxPool2d(kernel_size=2, stride=2),
-            'Conv8': nn.Conv2d(256, 512, kernel_size=3, padding=1, bias=False),
-            'bn8': nn.BatchNorm2d(512),
-            'activation8': nn.ReLU(inplace=True),
-            'Conv9': nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            'bn9': nn.BatchNorm2d(512),
-            'activation9': nn.ReLU(inplace=True),
-            'Conv10': nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            'bn10': nn.BatchNorm2d(512),
-            'activation10': nn.ReLU(inplace=True),
-            'pool4': nn.MaxPool2d(kernel_size=2, stride=2),
-            'Conv11': nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            'bn11': nn.BatchNorm2d(512),
-            'activation11': nn.ReLU(inplace=True),
-            'Conv12': nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            'bn12': nn.BatchNorm2d(512),
-            'activation12': nn.ReLU(inplace=True),
-            'Conv13': nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            'bn13': nn.BatchNorm2d(512),
-            'activation13': nn.ReLU(inplace=True),
-            'pool5': nn.MaxPool2d(kernel_size=2, stride=2),
-        })
-
-        self.classifier = nn.Sequential(
-            nn.Linear(512, 4096),
+        self.conv_layers = nn.Sequential(
+            Custom_Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, 4096),
+            Custom_Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, num_class)
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            Custom_Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            Custom_Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            Custom_Conv2d(256, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            Custom_Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            Custom_Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
-    def forward(self, x):
-        output = self.features['Conv1'](x)
-        output = self.features['bn1'](output)
-        output = self.features['activation1'](output)
-        output = self.features['Conv2'](output)
-        output = self.features['bn2'](output)
-        output = self.features['activation2'](output)
-        output = self.features['pool1'](output)
-        output = self.features['Conv3'](output)
-        output = self.features['bn3'](output)
-        output = self.features['activation3'](output)
-        output = self.features['Conv4'](output)
-        output = self.features['bn4'](output)
-        output = self.features['activation4'](output)
-        output = self.features['pool2'](output)
-        output = self.features['Conv5'](output)
-        output = self.features['bn5'](output)
-        output = self.features['activation5'](output)
-        output = self.features['Conv6'](output)
-        output = self.features['bn6'](output)
-        output = self.features['activation6'](output)
-        output = self.features['Conv7'](output)
-        output = self.features['bn7'](output)
-        output = self.features['activation7'](output)
-        output = self.features['pool3'](output)
-        output = self.features['Conv8'](output)
-        output = self.features['bn8'](output)
-        output = self.features['activation8'](output)
-        output = self.features['Conv9'](output)
-        output = self.features['bn9'](output)
-        output = self.features['activation9'](output)
-        output = self.features['Conv10'](output)
-        output = self.features['bn10'](output)
-        output = self.features['activation10'](output)
-        output = self.features['pool4'](output)
-        output = self.features['Conv11'](output)
-        output = self.features['bn11'](output)
-        output = self.features['activation11'](output)
-        output = self.features['Conv12'](output)
-        output = self.features['bn12'](output)
-        output = self.features['activation12'](output)
-        output = self.features['Conv13'](output)
-        output = self.features['bn13'](output)
-        output = self.features['activation13'](output)
-        output = self.features['pool5'](output)
-        output = output.view(output.size()[0], -1)
-        output = self.classifier(output)
+        self.linear_layers = nn.Sequential(
+            Custom_Linear(512, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            Custom_Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            Custom_Linear(4096, num_class)
+        )
 
-        return output
+        self.prune_choices_num = 15
+        self.prune_choices = torch.tensor([0, 3, 7, 10, 14, 17, 20, 24, 27, 30, 34, 37, 40, 0, 3])
+        self.prune_probability = torch.tensor([0.002, 0.002, 0.002, 0.002, 0.002, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.25, 0.25])
+
+    def forward(self, x):
+        x = self.conv_layers(x)
+        x = x.view(x.size()[0], -1)
+        x = self.linear_layers(x)
+        return x
 
 
     # define the function to resize the architecture kernel number
-    def update_architecture(self, modification_num):
-        update_times = int(modification_num + 1)
-        for update_id in range(update_times):
-            if torch.rand(1).item() < 0.5:
-                self.prune_kernel()
-            else:
-                self.prune_neuron()
-
-
-    def prune_kernel(self):
-        if torch.rand(1).item() < 0.02:
-            # low probabilit to prune sensitive layer
-            layer_choices =  torch.tensor([1, 2, 3, 4, 5])
+    def update_architecture(self, modification_num, strategy):
+        if not torch.isclose(torch.sum(self.prune_probability), torch.tensor(1.0), atol=1e-6):
+            raise ValueError("Prune Probability for each layer sum not equal to 1")
+        
+        prune_counter = torch.zeros(self.prune_choices_num)
+        noise = torch.randn(self.prune_choices_num) * 0.01
+        noised_distribution = self.prune_probability + noise
+        noised_distribution = torch.clamp(noised_distribution, min=0.002)
+        noised_distribution = noised_distribution / torch.sum(noised_distribution)
+        if strategy == 'prune':
+            for update_id in range(modification_num):
+                target_layer_idx = torch.multinomial(noised_distribution, 1).item()
+                target_layer = self.prune_choices[target_layer_idx].item()
+                if target_layer_idx < 13:
+                    self.prune_conv(target_layer)
+                else:
+                    self.prune_linear(target_layer)
+                prune_counter[target_layer_idx] += 1
+        elif strategy == 'quantize':
+            for update_id in range(modification_num):
+                if torch.rand(1).item() < 0.5:
+                    self.quantize_conv()
+                else:
+                    self.quantize_linear()
+        print(prune_counter / torch.sum(prune_counter))
+        return prune_counter / torch.sum(prune_counter)
+    
+    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length):
+        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
+        distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
+        self.prune_probability += step_length * (torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)  - self.prune_probability)
+        self.prune_probability = torch.clamp(self.prune_probability, min=0.002)
+        self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)
+        '''if forward == True:
+            distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
+            distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
+            self.prune_probability = (self.prune_probability + torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)) / 2
         else:
-            layer_choices =  torch.tensor([6, 7, 8, 9, 10, 11, 12, 13])
+            distribution_weight = (top1_pretrain_accuracy_tensors - torch.max(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.max(top1_pretrain_accuracy_tensors))
+            distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
+            self.prune_probability = (self.prune_probability - torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)) / 2
+        self.prune_probability = torch.clamp(self.prune_probability, min=0.002)
+        self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)'''
+
+
+
+
+    def prune_conv(self, target_layer):
+        # prune kernel
+        target_kernel = self.conv_layers[target_layer].prune_kernel()
+        if target_kernel == None:
+            return
+
+        # update bn1
+        target_bn = self.conv_layers[target_layer + 1]
+        with torch.no_grad():
+            kept_indices = [i for i in range(target_bn.num_features) if i != target_kernel]
+            target_bn.weight.data = target_bn.weight.data[kept_indices]
+            target_bn.bias.data = target_bn.bias.data[kept_indices]
+            target_bn.running_mean = target_bn.running_mean[kept_indices]
+            target_bn.running_var = target_bn.running_var[kept_indices]
+        target_bn.num_features -= 1
+        if target_bn.num_features != target_bn.weight.shape[0]:
+            raise ValueError("BatchNorm layer number_features and weight dimension mismath")
+
+        if target_layer < 40:
+            target_layer += 1
+            while (not isinstance(self.conv_layers[target_layer], Custom_Conv2d)):
+                target_layer += 1
+            self.conv_layers[target_layer].decre_input(target_kernel)
+        else:
+            # update first FC layer
+            output_length = 1 # gained by printing "output"
+            new_in_features = self.conv_layers[target_layer].out_channels * output_length ** 2
+            start_index = target_kernel * output_length ** 2
+            end_index = start_index + output_length ** 2
+            self.linear_layers[0].decre_input(new_in_features, start_index, end_index)
+
+    def prune_linear(self, target_layer):
+        target_neuron = self.linear_layers[target_layer].prune_neuron()
+        if target_neuron == None:
+            return
+        
+        new_in_features = self.linear_layers[target_layer].out_features
+        start_index = target_neuron
+        end_index = target_neuron + 1
+        self.linear_layers[target_layer + 3].decre_input(new_in_features, start_index, end_index)
+    
+    def quantize_conv(self):
+        if torch.rand(1).item() < 0.3:
+            # low probabilit to quantize sensitive layer
+            layer_choices =  torch.tensor([0, 3, 7, 10])
+        else:
+            layer_choices =  torch.tensor([14, 17, 20, 24, 27, 30, 34, 37, 40])
         target_layer = torch.randint(0, len(layer_choices), (1,)).item()
         target_layer = layer_choices[target_layer].item()
 
-        new_conv1_kernel_num = self.features['Conv' + str(target_layer)].out_channels - 1
-        if new_conv1_kernel_num == 0:
-            return
-        # update conv1
-        new_conv1 = nn.Conv2d(self.features['Conv' + str(target_layer)].in_channels, new_conv1_kernel_num, kernel_size=3, padding=1, bias=False)
-        # prone the kernel with least variance weights
-        weight_variances = torch.var(self.features['Conv' + str(target_layer)].weight.data, dim = [1, 2, 3])
-        target_kernel = torch.argmin(weight_variances).item()
-        with torch.no_grad():
-            new_conv1.weight.data = torch.cat([self.features['Conv' + str(target_layer)].weight.data[:target_kernel], self.features['Conv' + str(target_layer)].weight.data[target_kernel+1:]], dim=0)
-        self.features['Conv' + str(target_layer)] = new_conv1
-        assert self.features['Conv' + str(target_layer)].out_channels == self.features['Conv' + str(target_layer)].weight.shape[0], f"Conv layer out channels ({self.features['Conv' + str(target_layer)].out_channels}) and weight dimension ({self.features['Conv' + str(target_layer)].weight.shape[0]}) not match"
-
-        # update bn1
-        new_bn1 = nn.BatchNorm2d(new_conv1_kernel_num)
-        with torch.no_grad():
-            kept_indices = [i for i in range(self.features['bn' + str(target_layer)].num_features) if i != target_kernel]
-            new_bn1.weight.data = self.features['bn' + str(target_layer)].weight.data[kept_indices]
-            new_bn1.bias.data = self.features['bn' + str(target_layer)].bias.data[kept_indices]
-            new_bn1.running_mean = self.features['bn' + str(target_layer)].running_mean[kept_indices]
-            new_bn1.running_var = self.features['bn' + str(target_layer)].running_var[kept_indices]
-        self.features['bn' + str(target_layer)] = new_bn1
-        assert self.features['bn' + str(target_layer)].num_features == self.features['bn' + str(target_layer)].weight.shape[0], f"bn layer out channels ({self.features['bn' + str(target_layer)].num_features}) and weight dimension ({self.features['bn' + str(target_layer)].weight.shape[0]}) not match"
-
-        if target_layer < 13:
-            # if not last Conv layer, update conv2
-            new_conv2 = nn.Conv2d(self.features['Conv' + str(target_layer)].out_channels, self.features['Conv' + str(target_layer + 1)].out_channels, kernel_size=3, padding=1, bias=False)
-            with torch.no_grad():
-                kept_indices = [i for i in range(self.features['Conv' + str(target_layer + 1)].in_channels) if i != target_kernel]
-                new_conv2.weight.data = self.features['Conv' + str(target_layer + 1)].weight.data[:, kept_indices, :, :]
-            self.features['Conv' + str(target_layer + 1)] = new_conv2
-            assert self.features['Conv' + str(target_layer + 1)].in_channels == self.features['Conv' + str(target_layer + 1)].weight.shape[1], f"Conv layer in channels ({self.features['Conv' + str(target_layer + 1)].in_channels}) and weight dimension ({self.features['Conv' + str(target_layer + 1)].weight.shape[1]}) not match"
-        else:
-            # if so, update first FC layer
-            output_length = 1 # gained by printing "output"
-            new_fc1_intput_features = self.features['Conv' + str(target_layer)].out_channels * output_length ** 2
-            # update fc1
-            new_fc1 = nn.Linear(new_fc1_intput_features, self.classifier[0].out_features)
-            # prune the neuron with least variance weights
-            with torch.no_grad():
-                start_index = target_kernel * output_length ** 2
-                end_index = start_index + output_length ** 2
-                new_fc1.weight.data = torch.cat([self.classifier[0].weight.data[:, :start_index], self.classifier[0].weight.data[:, end_index:]], dim=1)
-                new_fc1.bias.data = self.classifier[0].bias.data
-            self.classifier[0] = new_fc1
-            assert self.classifier[0].in_features == self.classifier[0].weight.shape[1], f"FC layer in channels ({self.classifier[0].in_features}) and weight dimension ({self.classifier[0].weight.shape[1]}) not match"
+        # prune kernel
+        self.conv_layers[target_layer].quantization_hash_weights()
     
+    def quantize_linear(self):
+        layer_choices =  torch.tensor([0, 3])
+        target_layer = torch.randint(0, len(layer_choices), (1,)).item()
+        target_layer = layer_choices[target_layer].item()
 
-    def prune_neuron(self):
-        if torch.rand(1).item() < 0.5 and self.classifier[0].out_features - 1 > 0:
-            new_fc1_output_features = self.classifier[0].out_features - 1
-            # update fc1
-            new_fc1 = nn.Linear(self.classifier[0].in_features, new_fc1_output_features)
-            # prune the neuron with least variance weights
-            weight_variances = torch.var(self.classifier[0].weight.data, dim = 1)
-            target_neuron = torch.argmin(weight_variances).item()
-            with torch.no_grad():
-                new_fc1.weight.data = torch.cat([self.classifier[0].weight.data[:target_neuron], self.classifier[0].weight.data[target_neuron+1:]], dim=0)
-                new_fc1.bias.data = torch.cat([self.classifier[0].bias.data[:target_neuron], self.classifier[0].bias.data[target_neuron+1:]])
-            self.classifier[0] = new_fc1
-            assert self.classifier[0].out_features == self.classifier[0].weight.shape[0], f"FC layer out channels ({self.classifier[0].out_features}) and weight dimension ({self.classifier[0].weight.shape[0]}) not match"
-
-            # update fc2
-            new_fc2 = nn.Linear(self.classifier[0].out_features, self.classifier[3].out_features)
-            with torch.no_grad():
-                new_fc2.weight.data = torch.cat([self.classifier[3].weight.data[:, :target_neuron], self.classifier[3].weight.data[:, target_neuron+1:]], dim=1)
-                new_fc2.bias.data = self.classifier[3].bias.data
-            self.classifier[3] = new_fc2
-            assert self.classifier[3].in_features == self.classifier[3].weight.shape[1], f"FC layer in channels ({self.classifier[3].in_features}) and weight dimension ({self.classifier[3].weight.shape[1]}) not match"
-        else:
-            new_fc2_output_features = self.classifier[3].out_features - 1
-            if new_fc2_output_features == 0:
-                return
-            # update fc2
-            new_fc2 = nn.Linear(self.classifier[3].in_features, new_fc2_output_features)
-            # prune the neuron with least variance weights
-            weight_variances = torch.var(self.classifier[3].weight.data, dim = 1)
-            target_neuron = torch.argmin(weight_variances).item()
-            with torch.no_grad():
-                new_fc2.weight.data = torch.cat([self.classifier[3].weight.data[:target_neuron], self.classifier[3].weight.data[target_neuron+1:]], dim=0)
-                new_fc2.bias.data = torch.cat([self.classifier[3].bias.data[:target_neuron], self.classifier[3].bias.data[target_neuron+1:]])
-            self.classifier[3] = new_fc2
-            assert self.classifier[3].out_features == self.classifier[3].weight.shape[0], f"FC layer out channels ({self.classifier[3].out_features}) and weight dimension ({self.classifier[3].weight.shape[0]}) not match"
-
-            # update fc3
-            new_fc3 = nn.Linear(self.classifier[3].out_features, self.classifier[6].out_features)
-            with torch.no_grad():
-                new_fc3.weight.data = torch.cat([self.classifier[6].weight.data[:, :target_neuron], self.classifier[6].weight.data[:, target_neuron+1:]], dim=1)
-                new_fc3.bias.data = self.classifier[6].bias.data
-            self.classifier[6] = new_fc3
-            assert self.classifier[6].in_features == self.classifier[6].weight.shape[1], f"FC layer in channels ({self.classifier[6].in_features}) and weight dimension ({self.classifier[6].weight.shape[1]}) not match"
+        self.linear_layers[target_layer].quantization_hash_weights()

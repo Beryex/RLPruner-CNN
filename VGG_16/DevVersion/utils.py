@@ -180,3 +180,13 @@ class WarmUpLR(_LRScheduler):
         rate to base_lr * m / total_iters
         """
         return [base_lr * self.last_epoch / (self.total_iters + 1e-8) for base_lr in self.base_lrs]
+    
+def count_custom_conv2d(m, x, y):
+    x = x[0]
+    kernel_ops = m.weight_shape[2] * m.weight_shape[3]
+    total_ops = y.nelement() * (m.weight_shape[1] * kernel_ops) # assume not using group convolution
+    m.total_ops += torch.DoubleTensor([int(total_ops)])
+
+def count_custom_linear(m, x, y):
+    total_ops = y.nelement() * x[0].nelement() / y.size(0)
+    m.total_ops += torch.DoubleTensor([int(total_ops)])

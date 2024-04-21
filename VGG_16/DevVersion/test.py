@@ -1,13 +1,14 @@
 import torch
 import logging
 from thop import profile
+from models.vgg import Custom_Conv2d, Custom_Linear
 from tqdm import tqdm
 
 from conf import settings
-from utils import get_CIFAR10_test_dataloader, get_CIFAR100_test_dataloader
+from utils import get_CIFAR10_test_dataloader, get_CIFAR100_test_dataloader, count_custom_conv2d, count_custom_linear
 
 def test():
-    cifar100_test_loader = get_CIFAR10_test_dataloader(
+    cifar100_test_loader = get_CIFAR100_test_dataloader(
         settings.CIFAR100_TRAIN_MEAN,
         settings.CIFAR100_TRAIN_STD,
         num_workers=4,
@@ -19,14 +20,15 @@ def test():
     original_FLOPs_num = 0.0
     compressed_para_num = 0.0
     compressed_FLOPs_num = 0.0
-    input = torch.rand(128, 3, 32, 32).to(device)
+    input = torch.rand(1, 3, 32, 32).to(device)
+    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
 
     # initialize the testing parameters
     top1_correct_num = 0.0
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Original_1710611781.pkl')
+    model = torch.load('models/VGG_Original_1713455040.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():
@@ -43,7 +45,7 @@ def test():
     # calculate the accuracy and print it
     top1_accuracy = top1_correct_num / len(cifar100_test_loader.dataset)
     top5_accuracy = top5_correct_num / len(cifar100_test_loader.dataset)
-    original_FLOPs_num, original_para_num = profile(model, inputs = (input, ), verbose=False)
+    original_FLOPs_num, original_para_num = profile(model, inputs = (input, ), verbose=False, custom_ops = custom_ops)
     logging.info('Original model has top1 accuracy: {}, top5 accuracy: {}'.format(top1_accuracy, top5_accuracy))
     logging.info('Original model has FLOPs: {}, Parameter Num: {}'.format(original_FLOPs_num, original_para_num))
     
@@ -52,7 +54,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Original_1711775456.pkl')
+    model = torch.load('models/VGG_Compressed_Pruned_1713636980.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():
@@ -69,13 +71,13 @@ def test():
     # calculate the accuracy and print it
     top1_accuracy = top1_correct_num / len(cifar100_test_loader.dataset)
     top5_accuracy = top5_correct_num / len(cifar100_test_loader.dataset)
-    compressed_FLOPs_num, compressed_para_num = profile(model, inputs = (input, ), verbose=False)
+    compressed_FLOPs_num, compressed_para_num = profile(model, inputs = (input, ), verbose=False, custom_ops = custom_ops)
     logging.info('Compressed model has top1 accuracy: {}, top5 accuracy: {}'.format(top1_accuracy, top5_accuracy))
     logging.info('Compressed model has FLOPs: {}, Parameter Num: {}'.format(compressed_FLOPs_num, compressed_para_num))
     # get compressed ratio
-    FLOPs_compressed_ratio = compressed_FLOPs_num / original_FLOPs_num
-    Para_compressed_ratio = compressed_para_num / original_para_num
-    logging.info('FLOPS compressed ratio: {}, Parameter Num compressed ratio: {}'.format(FLOPs_compressed_ratio, Para_compressed_ratio))
+    FLOPs_compression_ratio = 1 - compressed_FLOPs_num / original_FLOPs_num
+    Para_compression_ratio = 1 - compressed_para_num / original_para_num
+    logging.info('FLOPS compressed ratio: {}, Parameter Num compressed ratio: {}'.format(FLOPs_compression_ratio, Para_compression_ratio))
     # print model
     print(model)
 

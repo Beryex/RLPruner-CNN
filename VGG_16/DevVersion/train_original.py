@@ -31,9 +31,9 @@ def train(epoch):
             pbar.set_postfix(**{'loss (batch)': loss.item()})
 
 @torch.inference_mode()
-def eval_training(epoch=0, tb=True):
+def eval_training(epoch=0):
     net.eval()
-    test_loss = 0.0 # cost function error
+    test_loss = 0.0 
     correct = 0.0
     for (images, labels) in tqdm(cifar10_test_loader, total=len(cifar10_test_loader), desc='Testing round', unit='batch', leave=False):
         images = images.to(device)
@@ -48,9 +48,9 @@ def eval_training(epoch=0, tb=True):
     return acc
 
 if __name__ == '__main__':
+    start_time = time.time()
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-    # reinitialize random seed
     current_time = int(time.time())
     torch.manual_seed(current_time)
     logging.info('Start with random seed: {}'.format(current_time))
@@ -62,8 +62,7 @@ if __name__ == '__main__':
     warm = 1
     batch_size = 128
 
-    #data preprocessing:
-    cifar10_training_loader = get_CIFAR10_training_dataloader(
+    cifar10_training_loader = get_CIFAR100_training_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -71,7 +70,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    cifar10_test_loader = get_CIFAR10_test_dataloader(
+    cifar10_test_loader = get_CIFAR100_test_dataloader(
         settings.CIFAR10_TRAIN_MEAN,
         settings.CIFAR10_TRAIN_STD,
         num_workers=4,
@@ -79,7 +78,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    net = VGG(num_class=10).to(device)
+    net = VGG(num_class=100).to(device)
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
@@ -104,3 +103,6 @@ if __name__ == '__main__':
             if not os.path.isdir("models"):
                 os.mkdir("models")
             torch.save(net, 'models/VGG_Original_{:d}.pkl'.format(current_time))
+    
+    end_time = time.time()
+    logging.info('Original training process takes {} minutes'.format((end_time - start_time) / 60))
