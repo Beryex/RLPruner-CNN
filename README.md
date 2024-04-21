@@ -16,7 +16,19 @@ python train_original.py
 Then replace the model in train_compressed.py with the reference model gained by train_original.py.
 Run
 ```
-python train_compressed.py [--critera c] [--accuracy_threshold A] [--compression_threshold C]
+usage: [your_script_name.py] [-h] [--criteria C] [--accuracy_threshold A] [--compression_threshold C] [--enable_adaptive_pruning]
+
+Adaptive Compressing
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --criteria C, -c C    Compressed the model with accuracy_threshold or compression_threshold
+  --accuracy_threshold A, -A A
+                        The final accuracy the architecture will achieve
+  --compression_threshold C, -C C
+                        The final compression ratio the architecture will achieve
+  --enable_adaptive_pruning, -eap
+                        Enable the special feature if set
 ```
 For example, if you want the compression is based on accuracy with threshold 0.7, run
 ```
