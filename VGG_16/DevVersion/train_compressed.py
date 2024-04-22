@@ -210,12 +210,14 @@ def generate_architecture(model, local_top1_accuracy, local_top5_accuracy):
 
     if best_model_index == 0:
         logging.info('Original Model wins')
+        if eap == True:
+            model.update_prune_probability_distribution(top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, forward=False)
     else:
         # means generated is better
         model = dev_model
         logging.info('Generated Model wins')
-    if eap == True:
-        model.update_prune_probability_distribution(top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length)
+        if eap == True:
+            model.update_prune_probability_distribution(top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, forward=True)
     logging.info('Current prune probability distribution: {}'.format(model.prune_probability))
     logging.info('Current compression ratio: FLOPs: {}, Parameter number {}'.format(FLOPs_compression_ratio, Para_compression_ratio))
     

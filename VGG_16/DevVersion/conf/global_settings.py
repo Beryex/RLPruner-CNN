@@ -14,10 +14,11 @@ MAX_TOLERANCE_TIMES = 3     # for each training, how many updates we are going t
 MAX_TOLERANCE_TIMES_EAP = 10
 MAX_PRUNE_NUM = 800         # max pruning numbers, that is max pruning we make to architecture in update_architecture
 MAX_QUANTIZE_NUM = 20       # max quantize numbers, that is max quantize we make to architecture in update_architecture
-DEV_PRETRAIN_NUM = 5        # for each potential architecture, how many epochs we are going to train it
+DEV_PRETRAIN_NUM = 10        # for each potential architecture, how many epochs we are going to train it
 DEV_NUM = 20                # for each potential architecture, how many epochs we are going to train it
 DEFAULT_ACCURACY_THRESHOLD = 0.705  # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
 DEFAULT_COMPRESSION_THRESHOLD = 1   # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
+DATASET_PROPORTION = 1
 
 
 # for training parameters
@@ -27,6 +28,6 @@ BATCH_SIZE = 256
 ORIGINAL_EPOCH = 130
 DYNAMIC_EPOCH = 400
 ORIGINAL_MILESTONES = [40, 80, 100]
-DYNAMIC_PRETRAIN_MILESTONES = [3, 4, 5]
+DYNAMIC_PRETRAIN_MILESTONES = [4, 7, 9]
 DYNAMIC_MILESTONES = [8, 15, 19]
 TOLERANCE_MILESTONES = [3, 6, 9]

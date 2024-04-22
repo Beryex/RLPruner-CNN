@@ -287,24 +287,18 @@ class VGG(nn.Module):
         print(prune_counter / torch.sum(prune_counter))
         return prune_counter / torch.sum(prune_counter)
     
-    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length):
-        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
-        distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
-        self.prune_probability += step_length * (torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)  - self.prune_probability)
-        self.prune_probability = torch.clamp(self.prune_probability, min=0.002)
-        self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)
-        '''if forward == True:
+    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, forward=False):
+        if forward == True:
             distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
             distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
-            self.prune_probability = (self.prune_probability + torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)) / 2
+            distribution_offset = step_length * (torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)  - self.prune_probability)
         else:
             distribution_weight = (top1_pretrain_accuracy_tensors - torch.max(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.max(top1_pretrain_accuracy_tensors))
             distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
-            self.prune_probability = (self.prune_probability - torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)) / 2
+            distribution_offset = step_length * (self.prune_probability - torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0))
+        self.prune_probability += distribution_offset
         self.prune_probability = torch.clamp(self.prune_probability, min=0.002)
-        self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)'''
-
-
+        self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)
 
 
     def prune_conv(self, target_layer):

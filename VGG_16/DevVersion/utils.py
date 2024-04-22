@@ -3,6 +3,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
 import torch
+from conf import settings
 
 def get_CIFAR10_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
     """ return training dataloader
@@ -42,7 +43,7 @@ def get_CIFAR10_dev_training_dataloader(mean, std, batch_size=16, num_workers=2,
         shuffle: whether to shuffle
     Returns: train_data_loader:torch dataloader object
     """
-
+    dataset_proportion= settings.DATASET_PROPORTION
     transform_train = transforms.Compose([
         #transforms.ToPILImage(),
         transforms.RandomCrop(32, padding=4),
@@ -51,9 +52,9 @@ def get_CIFAR10_dev_training_dataloader(mean, std, batch_size=16, num_workers=2,
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
-    #cifar10_training = CIFAR100Train(path, transform=transform_train)
+    #cifar10_training = CIFAR10Train(path, transform=transform_train)
     cifar10_training = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-    n_dev_train = int(len(cifar10_training) * 0.1)
+    n_dev_train = int(len(cifar10_training) * dataset_proportion)
     n_discard = len(cifar10_training) - n_dev_train
     cifar10_dev_training, _ = random_split(cifar10_training, [n_dev_train, n_discard], generator=torch.Generator().manual_seed(0))
     cifar10_dev_training_loader = DataLoader(
@@ -122,7 +123,7 @@ def get_CIFAR100_dev_training_dataloader(mean, std, batch_size=16, num_workers=2
         shuffle: whether to shuffle
     Returns: train_data_loader:torch dataloader object
     """
-
+    dataset_proportion= settings.DATASET_PROPORTION
     transform_train = transforms.Compose([
         #transforms.ToPILImage(),
         transforms.RandomCrop(32, padding=4),
@@ -133,7 +134,7 @@ def get_CIFAR100_dev_training_dataloader(mean, std, batch_size=16, num_workers=2
     ])
     #cifar10_training = CIFAR100Train(path, transform=transform_train)
     cifar100_training = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-    n_dev_train = int(len(cifar100_training) * 0.1)
+    n_dev_train = int(len(cifar100_training) * dataset_proportion)
     n_discard = len(cifar100_training) - n_dev_train
     cifar100_dev_training, _ = random_split(cifar100_training, [n_dev_train, n_discard], generator=torch.Generator().manual_seed(0))
     cifar100_dev_training_loader = DataLoader(
