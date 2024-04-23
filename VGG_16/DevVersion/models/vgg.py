@@ -288,15 +288,9 @@ class VGG(nn.Module):
         return prune_counter / torch.sum(prune_counter)
     
     def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, forward=False):
-        if forward == True:
-            distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
-            distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
-            distribution_offset = step_length * (torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)  - self.prune_probability)
-        else:
-            distribution_weight = (top1_pretrain_accuracy_tensors - torch.max(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.max(top1_pretrain_accuracy_tensors))
-            distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
-            distribution_offset = step_length * (self.prune_probability - torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0))
-        self.prune_probability += distribution_offset
+        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
+        distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
+        self.prune_probability += step_length * (torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)  - self.prune_probability)
         self.prune_probability = torch.clamp(self.prune_probability, min=0.002)
         self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)
 
