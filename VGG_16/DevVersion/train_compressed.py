@@ -21,7 +21,6 @@ def prune_architecture(top1_acc):
     global net
     global tolerance_times
     global modification_num
-    global generate_num
     global optimizer
     global accuracy_threshold
     global strategy
@@ -30,11 +29,6 @@ def prune_architecture(top1_acc):
         net = net.to(device)
         if model_index == 0:
             tolerance_times -= 1
-            if eap == True:
-                if tolerance_times in settings.TOLERANCE_MILESTONES:
-                    generate_num += 1
-            else:
-                generate_num += 1
         optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
         # save the module
         if not os.path.isdir("models"):
@@ -44,13 +38,10 @@ def prune_architecture(top1_acc):
         if args.criteria == "compression" and Para_compression_ratio >= compression_threshold:
             # decrement accuracy_threshold and reinitialize hyperparameter if criteria is compression ratio
             accuracy_threshold -= 0.05
-            generate_num = settings.MAX_GENERATE_NUM
-            modification_num = settings.MAX_PRUNE_NUM
             tolerance_times = settings.MAX_TOLERANCE_TIMES
             logging.info('Current accuracy threshold: {}'.format(accuracy_threshold))
         else:
             strategy = "finished"
-            generate_num = settings.MAX_GENERATE_NUM
             modification_num = settings.MAX_QUANTIZE_NUM
             tolerance_times = settings.MAX_TOLERANCE_TIMES
             # save the module and break
@@ -61,8 +52,6 @@ def prune_architecture(top1_acc):
 def quantize_architecture(top1_acc):
     global net
     global tolerance_times
-    global modification_num
-    global generate_num
     global optimizer
     global accuracy_threshold
     global strategy
@@ -71,11 +60,6 @@ def quantize_architecture(top1_acc):
         net = net.to(device)
         if model_index == 0:
             tolerance_times -= 1
-            if eap == True:
-                if tolerance_times in settings.TOLERANCE_MILESTONES:
-                    generate_num += 1
-            else:
-                generate_num += 1
         optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
         # save the module
         if not os.path.isdir("models"):
@@ -127,6 +111,8 @@ def eval_training(epoch):
 
 
 def generate_architecture(model, local_top1_accuracy):
+    global top1_pretrain_accuracy_cache
+    global prune_probability_distribution_cache
     # initialize all evaluating variables
     top1_accuracy_tensors = torch.zeros(2)
     FLOPs_tensors = torch.zeros(2)
@@ -137,7 +123,16 @@ def generate_architecture(model, local_top1_accuracy):
     parameter_num_tensors[0] = local_parameter_num
 
     # generate architecture
-    dev_model = copy.deepcopy(get_best_generated_architecture(model))
+    dev_model = get_best_generated_architecture(model)
+    if dev_model == None:
+        if eap == True:
+            model.update_prune_probability_distribution(top1_pretrain_accuracy_cache, prune_probability_distribution_cache, 
+                                                        step_length, settings.PROBABILITY_LOWER_BOUND)
+        logging.info('All generated architectures are worse than the architecture in caches. Stop fully training on them')
+        logging.info('Current prune probability distribution: {}'.format(model.prune_probability))
+        return model, 0
+    
+    dev_model = copy.deepcopy(dev_model)
     dev_model = dev_model.to(device)
     dev_lr = lr
     dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
@@ -197,6 +192,11 @@ def generate_architecture(model, local_top1_accuracy):
     FLOPs_compression_ratio = 1 - best_model_FLOPs / original_FLOPs_num
     Para_compression_ratio = 1 - best_model_Params / original_para_num
 
+    if eap == True:
+        model.update_prune_probability_distribution(top1_pretrain_accuracy_cache, prune_probability_distribution_cache, 
+                                                    step_length, settings.PROBABILITY_LOWER_BOUND)
+    logging.info('Current prune probability distribution: {}'.format(model.prune_probability))
+
     if best_model_index == 0:
         logging.info('Original Model wins')
     else:
@@ -204,13 +204,8 @@ def generate_architecture(model, local_top1_accuracy):
         model = dev_model
         logging.info('Generated Model wins')
         # clear the cache when architecture has been updated
-        global top1_pretrain_accuracy_cache
-        global prune_probability_distribution_cache
         top1_pretrain_accuracy_cache = torch.zeros(generate_num)
         prune_probability_distribution_cache = torch.zeros(generate_num, net.prune_choices_num)
-    if eap == True:
-        model.update_prune_probability_distribution(top1_pretrain_accuracy_cache, prune_probability_distribution_cache, step_length)
-    logging.info('Current prune probability distribution: {}'.format(model.prune_probability))
     logging.info('Current compression ratio: FLOPs: {}, Parameter number {}'.format(FLOPs_compression_ratio, Para_compression_ratio))
     
     return model, best_model_index
@@ -219,8 +214,6 @@ def generate_architecture(model, local_top1_accuracy):
 def get_best_generated_architecture(model):
     # initialize all evaluating variables
     model_list = []
-    global top1_pretrain_accuracy_cache
-    global prune_probability_distribution_cache
     dev_top1_pretrain_accuracy_tensors = torch.zeros(generate_num)
 
     original_model = copy.deepcopy(model)
@@ -228,7 +221,8 @@ def get_best_generated_architecture(model):
         for model_id in range(generate_num):
             # generate architecture
             dev_model = copy.deepcopy(original_model)
-            dev_prune_probability_distribution_tensor = VGG.update_architecture(dev_model, modification_num, strategy)
+            dev_prune_probability_distribution_tensor = VGG.update_architecture(dev_model, modification_num, strategy, 
+                                                                                settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
             dev_model = dev_model.to(device)
             dev_lr = lr
             dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
@@ -278,16 +272,23 @@ def get_best_generated_architecture(model):
             # store the model
             model_list.append(dev_model)
             # only update cache when acc is higher in cache
-            min_acc, min_idx = torch.min(top1_pretrain_accuracy_cache)
-            if dev_top1_pretrain_accuracy > min_acc:
+            global top1_pretrain_accuracy_cache
+            global prune_probability_distribution_cache
+            min_acc, min_idx = torch.min(top1_pretrain_accuracy_cache, dim=0)
+            if dev_top1_pretrain_accuracy >= min_acc:
                 top1_pretrain_accuracy_cache[min_idx] = dev_top1_pretrain_accuracy
                 prune_probability_distribution_cache[min_idx] = dev_prune_probability_distribution_tensor
     best_model_index = torch.argmax(dev_top1_pretrain_accuracy_tensors)
     best_generated_model = model_list[best_model_index]
 
     logging.info('Pretrained Generated Model Top1 Accuracy List: {}'.format(dev_top1_pretrain_accuracy_tensors))
+    logging.info('Current top1 pretrain accuracy cache: {}'.format(top1_pretrain_accuracy_cache))
+    logging.info('Current prune probability distribution cache: {}'.format(prune_probability_distribution_cache))
     logging.info('Model {} wins'.format(best_model_index))
-    return best_generated_model
+    if torch.max(dev_top1_pretrain_accuracy_tensors) >= torch.max(top1_pretrain_accuracy_cache):
+        return best_generated_model
+    else:
+        return None
 
 
 def compute_score(top1_accuracy_tensors, FLOPs_tensors, parameter_num_tensors):
@@ -307,7 +308,7 @@ def compute_score(top1_accuracy_tensors, FLOPs_tensors, parameter_num_tensors):
             score_tensors[0] = 1.0
     
     logging.info('Generated Model Top1 Accuracy List: {}'.format(top1_accuracy_tensors))
-    logging.info('Generated Model Parameter Number Scaled List: {}'.format(parameter_num_tensors))
+    logging.info('Generated Model Parameter Number List: {}'.format(parameter_num_tensors))
     logging.info('Generated Model Score List: {}'.format(score_tensors))
     return score_tensors
 
@@ -421,8 +422,8 @@ if __name__ == '__main__':
 
     net = torch.load('models/VGG_Original_1713455040.pkl')  # replace it with the model gained by train_original.py
     net = net.to(device)
-    net.prune_probability = torch.tensor([0.002, 0.002, 0.002, 0.002, 0.002, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.25, 0.25])
-    #net.prune_probability = torch.tensor([0.002, 0.002, 0.002, 0.002, 0.002, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.06125, 0.25, 0.25])
+    net.prune_probability = torch.tensor([0.0020, 0.0020, 0.0020, 0.0020, 0.0020, 0.0613, 0.0613, 0.0613, 0.0613,
+        0.0613, 0.0613, 0.0613, 0.0613, 0.2500, 0.2500])
     logging.info('Initial prune probability distribution: {}'.format(net.prune_probability))
 
     input = torch.rand(1, 3, 32, 32).to(device)

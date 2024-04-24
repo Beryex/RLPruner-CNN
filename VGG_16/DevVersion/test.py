@@ -54,7 +54,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Compressed_Pruned_1713741859.pkl')
+    model = torch.load('models/VGG_Compressed_Pruned_1713914174.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():

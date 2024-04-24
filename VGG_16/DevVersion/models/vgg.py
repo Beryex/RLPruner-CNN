@@ -40,6 +40,9 @@ class Custom_Conv2d(nn.Module):
         
         self.weight_indices = None
     
+    def __repr__(self):
+        return f'Custom_Conv2d(in_channels={self.in_channels}, out_channels={self.out_channels})'
+    
     def forward(self, x):
         if self.weight_indices == None:
             actual_weight = self.weight
@@ -126,6 +129,9 @@ class Custom_Linear(nn.Module):
                 self.bias = None
 
         self.weight_indices = None
+    
+    def __repr__(self):
+        return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features})'
     
     def forward(self, x):
         if self.weight_indices == None:
@@ -260,38 +266,34 @@ class VGG(nn.Module):
 
 
     # define the function to resize the architecture kernel number
-    def update_architecture(self, modification_num, strategy):
-        if not torch.isclose(torch.sum(self.prune_probability), torch.tensor(1.0), atol=1e-6):
-            raise ValueError("Prune Probability for each layer sum not equal to 1")
-        
+    def update_architecture(self, modification_num, strategy, noise_var=0.01, probability_lower_bound=0.005):
         prune_counter = torch.zeros(self.prune_choices_num)
-        noise = torch.randn(self.prune_choices_num) * 0.01
+        noise = torch.randn(self.prune_choices_num) * noise_var
         noised_distribution = self.prune_probability + noise
-        noised_distribution = torch.clamp(noised_distribution, min=0.002)
+        noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)
+        prune_counter = noised_distribution * modification_num
         if strategy == 'prune':
-            for update_id in range(modification_num):
-                target_layer_idx = torch.multinomial(noised_distribution, 1).item()
+            for target_layer_idx, count in enumerate(prune_counter):
                 target_layer = self.prune_choices[target_layer_idx].item()
-                if target_layer_idx < 13:
-                    self.prune_conv(target_layer)
-                else:
-                    self.prune_linear(target_layer)
-                prune_counter[target_layer_idx] += 1
+                count = int(count.item())
+                for _ in range(count):
+                    if target_layer_idx < 13:
+                        self.prune_conv(target_layer)
+                    else:
+                        self.prune_linear(target_layer)
         elif strategy == 'quantize':
             for update_id in range(modification_num):
                 if torch.rand(1).item() < 0.5:
                     self.quantize_conv()
                 else:
                     self.quantize_linear()
-        print(prune_counter / torch.sum(prune_counter))
-        return prune_counter / torch.sum(prune_counter)
+        return noised_distribution
     
-    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, forward=False):
-        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
-        distribution_weight = distribution_weight.unsqueeze(1) # for broadcasting
-        self.prune_probability += step_length * (torch.sum(distribution_weight * prune_probability_distribution_tensors, dim=0)  - self.prune_probability)
-        self.prune_probability = torch.clamp(self.prune_probability, min=0.002)
+    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, probability_lower_bound=0.005):
+        best_distribution_idx = torch.argmax(top1_pretrain_accuracy_tensors)
+        self.prune_probability += step_length * (prune_probability_distribution_tensors[best_distribution_idx]  - self.prune_probability)
+        self.prune_probability = torch.clamp(self.prune_probability, min=probability_lower_bound)
         self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)
 
 

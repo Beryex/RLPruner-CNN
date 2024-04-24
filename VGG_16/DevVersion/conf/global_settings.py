@@ -8,7 +8,6 @@ CIFAR100_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.2761504713256840
 
 # global hyperparameter
 # for compression algorithm
-STEP_LENGTH = 0.2
 MAX_GENERATE_NUM = 4        # for each updates, how many potential architecture we are going to generate
 MAX_TOLERANCE_TIMES = 3     # for each training, how many updates we are going to apply before we get the final architecture
 MAX_TOLERANCE_TIMES_EAP = 10
@@ -18,6 +17,9 @@ DEV_PRETRAIN_NUM = 10       # for each potential architecture, how many epochs w
 DEV_NUM = 20                # for each potential architecture, how many epochs we are going to train it
 DEFAULT_ACCURACY_THRESHOLD = 0.715  # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
 DEFAULT_COMPRESSION_THRESHOLD = 1   # if current top1 accuracy is above the accuracy_threshold, then computation of architecture's score main focus on FLOPs and parameter #
+STEP_LENGTH = 0.8
+NOISE_VAR = 0.01
+PROBABILITY_LOWER_BOUND = 0
 DATASET_PROPORTION = 0.2
 
 
