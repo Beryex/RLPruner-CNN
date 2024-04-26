@@ -41,7 +41,7 @@ class Custom_Conv2d(nn.Module):
         self.weight_indices = None
     
     def __repr__(self):
-        return f'Custom_Conv2d(in_channels={self.in_channels}, out_channels={self.out_channels})'
+        return f'Custom_Conv2d(in_channels={self.in_channels}, out_channels={self.out_channels}, weight_shape={self.weight_shape})'
     
     def forward(self, x):
         if self.weight_indices == None:
@@ -50,6 +50,7 @@ class Custom_Conv2d(nn.Module):
             actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.conv2d(x, actual_weight, self.bias, self.stride, self.padding)
+
 
     def prune_kernel(self):
         if self.weight_indices == None:
@@ -63,7 +64,8 @@ class Custom_Conv2d(nn.Module):
                 if self.bias != None:
                     self.bias.data = torch.cat([self.bias.data[:target_kernel], self.bias.data[target_kernel+1:]])
             self.out_channels -= 1
-            if self.out_channels != self.weight.shape[0]:
+            self.weight_shape[0] -= 1
+            if self.out_channels != self.weight.shape[0] or self.weight_shape[0] != self.weight.shape[0]:
                 raise ValueError("Conv2d layer out_channels and weight dimension mismath")
             return target_kernel
     
@@ -72,33 +74,19 @@ class Custom_Conv2d(nn.Module):
             kept_indices = [i for i in range(self.in_channels) if i != target_kernel]
             self.weight.data = self.weight.data[:, kept_indices, :, :]
         self.in_channels -= 1
-        if self.in_channels != self.weight.shape[1]:
+        self.weight_shape[1] -= 1
+        if self.in_channels != self.weight.shape[1] or self.weight_shape[1] != self.weight.shape[1]:
             raise ValueError("Conv2d layer in_channels and weight dimension mismath")
-
-    '''def quantization_hash_weights(self):
-        original_weights = self.weight.data.clone().view(-1, 1).cuda()
-        num_clusters = len(original_weights) // 2  # compress parameter to be half
-        initial_centers = torch.linspace(min(original_weights).item(), max(original_weights).item(), num_clusters).view(-1, 1).numpy()
-
-        kmeans = KMeans(n_clusters=num_clusters, init=initial_centers)
-        kmeans.fit(original_weights.numpy())
-        clustered_weights = torch.from_numpy(kmeans.cluster_centers_).float().squeeze()
-
-        self.weight_indices = torch.from_numpy(kmeans.labels_).long()
-        self.weight = nn.Parameter(clustered_weights)'''
     
     def quantization_hash_weights(self):
         original_weights = self.weight.data.clone().view(-1, 1).cuda()
-        num_clusters = len(original_weights) // 2
+        num_clusters = min(len(original_weights) // 2, 2048)
 
-        original_weights_np = original_weights.cpu().numpy()
-
-        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=20, verbose=True, gpu=True)
-
-        kmeans.train(original_weights_np)
+        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=True, gpu=True)
+        kmeans.train(original_weights.cpu().numpy())
 
         clustered_weights = torch.from_numpy(kmeans.centroids).float().cuda().squeeze()
-        labels = torch.from_numpy(kmeans.index.assign(original_weights_np)).long().cuda()
+        labels = torch.from_numpy(kmeans.index.assign(original_weights.cpu().numpy(), k=1)).long().cuda()
 
         self.weight_indices = labels
         self.weight = torch.nn.Parameter(clustered_weights)
@@ -131,16 +119,17 @@ class Custom_Linear(nn.Module):
         self.weight_indices = None
     
     def __repr__(self):
-        return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features})'
+        return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features}, weight_shape={self.weight_shape})'
     
     def forward(self, x):
         if self.weight_indices == None:
             actual_weight = self.weight
         else:
-            actual_weight = self.weight[self.weight_indices].view_as(self.weight_shape)
+            actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.linear(x, actual_weight, self.bias)
     
+
     def prune_neuron(self):
         if self.weight_indices == None:
             # weight is still normal, not cluster
@@ -153,7 +142,8 @@ class Custom_Linear(nn.Module):
                 if self.bias != None:
                     self.bias.data = torch.cat([self.bias.data[:target_neuron], self.bias.data[target_neuron+1:]])
             self.out_features -= 1
-            if self.out_features != self.weight.shape[0]:
+            self.weight_shape[0] -= 1
+            if self.out_features != self.weight.shape[0] or self.weight_shape[0] != self.weight.shape[0]:
                 raise ValueError("Linear layer out_channels and weight dimension mismath")
             return target_neuron
     
@@ -162,33 +152,19 @@ class Custom_Linear(nn.Module):
             self.weight.data = torch.cat([self.weight.data[:, :start_index], self.weight.data[:, end_index:]], dim=1)
             self.bias.data = self.bias.data
         self.in_features = new_in_features
-        if self.in_features != self.weight.shape[1]:
+        self.weight_shape[1] = new_in_features
+        if self.in_features != self.weight.shape[1] or self.weight_shape[1] != self.weight.shape[0]:
             raise ValueError("Linear layer in_channels and weight dimension mismath")
-    
-    '''def quantization_hash_weights(self):
-        original_weights = self.weight.data.clone().view(-1, 1).cpu()
-        num_clusters = len(original_weights) // 2  # compress parameter to be half
-        initial_centers = torch.linspace(min(original_weights).item(), max(original_weights).item(), num_clusters).view(-1, 1).numpy()
-
-        kmeans = KMeans(n_clusters=num_clusters, init=initial_centers)
-        kmeans.fit(original_weights.numpy())
-        clustered_weights = torch.from_numpy(kmeans.cluster_centers_).float().squeeze()
-
-        self.weight_indices = torch.from_numpy(kmeans.labels_).long()
-        self.weight = nn.Parameter(clustered_weights)'''
     
     def quantization_hash_weights(self):
         original_weights = self.weight.data.clone().view(-1, 1).cuda()
-        num_clusters = len(original_weights) // 2
+        num_clusters = min(len(original_weights) // 2, 2048)
 
-        original_weights_np = original_weights.cpu().numpy()
-
-        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=20, verbose=True, gpu=True)
-
-        kmeans.train(original_weights_np)
+        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=True, gpu=True)
+        kmeans.train(original_weights.cpu().numpy())
 
         clustered_weights = torch.from_numpy(kmeans.centroids).float().cuda().squeeze()
-        labels = torch.from_numpy(kmeans.index.assign(original_weights_np)).long().cuda()
+        labels = torch.from_numpy(kmeans.index.assign(original_weights.cpu().numpy(), k=1)).long().cuda()
 
         self.weight_indices = labels
         self.weight = torch.nn.Parameter(clustered_weights)
@@ -290,11 +266,16 @@ class VGG(nn.Module):
                     self.quantize_linear()
         return noised_distribution
     
-    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, probability_lower_bound=0.005):
-        best_distribution_idx = torch.argmax(top1_pretrain_accuracy_tensors)
-        self.prune_probability += step_length * (prune_probability_distribution_tensors[best_distribution_idx]  - self.prune_probability)
+    
+    def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, probability_lower_bound, ppo_clip):
+        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)).unsqueeze(1)
+        weighted_distribution = torch.sum(prune_probability_distribution_tensors * distribution_weight, dim=0)
+        new_prune_probability = self.prune_probability + step_length * (weighted_distribution - self.prune_probability)
+        ratio = new_prune_probability / self.prune_probability
+        clipped_ratio = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip)
+        self.prune_probability *= clipped_ratio
         self.prune_probability = torch.clamp(self.prune_probability, min=probability_lower_bound)
-        self.prune_probability = self.prune_probability / torch.sum(self.prune_probability)
+        self.prune_probability /= torch.sum(self.prune_probability)
 
 
     def prune_conv(self, target_layer):

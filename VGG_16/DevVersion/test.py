@@ -28,7 +28,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Original_1713455040.pkl')
+    model = torch.load('models/VGG_Compressed_Pruned_1713976718.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():
@@ -54,7 +54,7 @@ def test():
     top5_correct_num = 0.0
 
     # begin testing
-    model = torch.load('models/VGG_Compressed_Pruned_1713914174.pkl')
+    model = torch.load('models/VGG_Compressed_Pruned_1713976718.pkl')
     model = model.to(device)
     model.eval()
     with torch.inference_mode():

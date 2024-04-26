@@ -29,6 +29,11 @@ def prune_architecture(top1_acc):
         net = net.to(device)
         if model_index == 0:
             tolerance_times -= 1
+            if eap == True:
+                if tolerance_times in settings.TOLERANCE_MILESTONES:
+                    modification_num /= 2
+            else:
+                modification_num /= 2
         optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
         # save the module
         if not os.path.isdir("models"):
@@ -38,6 +43,7 @@ def prune_architecture(top1_acc):
         if args.criteria == "compression" and Para_compression_ratio >= compression_threshold:
             # decrement accuracy_threshold and reinitialize hyperparameter if criteria is compression ratio
             accuracy_threshold -= 0.05
+            modification_num = settings.MAX_PRUNE_NUM
             tolerance_times = settings.MAX_TOLERANCE_TIMES
             logging.info('Current accuracy threshold: {}'.format(accuracy_threshold))
         else:
@@ -285,7 +291,7 @@ def get_best_generated_architecture(model):
     logging.info('Current top1 pretrain accuracy cache: {}'.format(top1_pretrain_accuracy_cache))
     logging.info('Current prune probability distribution cache: {}'.format(prune_probability_distribution_cache))
     logging.info('Model {} wins'.format(best_model_index))
-    if torch.max(dev_top1_pretrain_accuracy_tensors) >= torch.max(top1_pretrain_accuracy_cache):
+    if torch.max(dev_top1_pretrain_accuracy_tensors) >= torch.max(top1_pretrain_accuracy_cache) - 0.005:
         return best_generated_model
     else:
         return None
@@ -293,19 +299,11 @@ def get_best_generated_architecture(model):
 
 def compute_score(top1_accuracy_tensors, FLOPs_tensors, parameter_num_tensors):
     score_tensors = torch.zeros(2)
-    # use Min-Max Normalization to process the FLOPs_list and parameter_num_list
-    FLOPs_scaled_tensors = (FLOPs_tensors - torch.min(FLOPs_tensors)) / (torch.max(FLOPs_tensors) - torch.min(FLOPs_tensors))
-    parameter_num_scaled_tensors = (parameter_num_tensors - torch.min(parameter_num_tensors)) / (torch.max(parameter_num_tensors) - torch.min(parameter_num_tensors))
     
-    if torch.min(top1_accuracy_tensors) > accuracy_threshold:
-        score_tensors = 1 - FLOPs_scaled_tensors * 0.5 - parameter_num_scaled_tensors * 0.5
-    elif torch.max(top1_accuracy_tensors) < accuracy_threshold:
-        score_tensors = top1_accuracy_tensors
+    if top1_accuracy_tensors[1] > accuracy_threshold - 0.005:
+        score_tensors[1] = 1.0
     else:
-        if top1_accuracy_tensors[1] > accuracy_threshold - 0.005:
-            score_tensors[1] = 1.0
-        else:
-            score_tensors[0] = 1.0
+        score_tensors = top1_accuracy_tensors
     
     logging.info('Generated Model Top1 Accuracy List: {}'.format(top1_accuracy_tensors))
     logging.info('Generated Model Parameter Number List: {}'.format(parameter_num_tensors))
