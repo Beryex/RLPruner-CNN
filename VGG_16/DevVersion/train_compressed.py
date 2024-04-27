@@ -133,7 +133,7 @@ def generate_architecture(model, local_top1_accuracy):
     if dev_model == None:
         if eap == True:
             model.update_prune_probability_distribution(top1_pretrain_accuracy_cache, prune_probability_distribution_cache, 
-                                                        step_length, settings.PROBABILITY_LOWER_BOUND)
+                                                        step_length, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
         logging.info('All generated architectures are worse than the architecture in caches. Stop fully training on them')
         logging.info('Current prune probability distribution: {}'.format(model.prune_probability))
         return model, 0
@@ -200,7 +200,7 @@ def generate_architecture(model, local_top1_accuracy):
 
     if eap == True:
         model.update_prune_probability_distribution(top1_pretrain_accuracy_cache, prune_probability_distribution_cache, 
-                                                    step_length, settings.PROBABILITY_LOWER_BOUND)
+                                                    step_length, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
     logging.info('Current prune probability distribution: {}'.format(model.prune_probability))
 
     if best_model_index == 0:
@@ -230,7 +230,7 @@ def get_best_generated_architecture(model):
             dev_prune_probability_distribution_tensor = VGG.update_architecture(dev_model, modification_num, strategy, 
                                                                                 settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
             dev_model = dev_model.to(device)
-            dev_lr = lr
+            '''dev_lr = lr
             dev_optimizer = optim.SGD(dev_model.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
             dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
             # train the architecture for dev_num times
@@ -255,7 +255,7 @@ def get_best_generated_architecture(model):
                     dev_optimizer.step()
 
                     if dev_id <= warm:
-                        dev_warmup_scheduler.step()
+                        dev_warmup_scheduler.step()'''
                 
             # initialize the testing parameters
             correct_1 = 0.0

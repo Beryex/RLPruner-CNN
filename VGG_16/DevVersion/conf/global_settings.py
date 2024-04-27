@@ -8,9 +8,9 @@ CIFAR100_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.2761504713256840
 
 # global hyperparameter
 # for compression algorithm
-MAX_GENERATE_NUM = 4        # for each updates, how many potential architecture we are going to generate
+MAX_GENERATE_NUM = 8        # for each updates, how many potential architecture we are going to generate
 MAX_TOLERANCE_TIMES = 3     # for each training, how many updates we are going to apply before we get the final architecture
-MAX_TOLERANCE_TIMES_EAP = 10
+MAX_TOLERANCE_TIMES_EAP = 20
 MAX_PRUNE_NUM = 800         # max pruning numbers, that is max pruning we make to architecture in update_architecture
 MAX_QUANTIZE_NUM = 20       # max quantize numbers, that is max quantize we make to architecture in update_architecture
 DEV_PRETRAIN_NUM = 10       # for each potential architecture, how many epochs we are going to train it
@@ -33,4 +33,4 @@ DYNAMIC_EPOCH = 200
 ORIGINAL_MILESTONES = [40, 80, 100]
 DYNAMIC_PRETRAIN_MILESTONES = [4, 7, 9]
 DYNAMIC_MILESTONES = [8, 15, 19]
-TOLERANCE_MILESTONES = [3, 6, 8]
+TOLERANCE_MILESTONES = [5, 10, 15]

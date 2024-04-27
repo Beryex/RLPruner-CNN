@@ -64,7 +64,7 @@ class Custom_Conv2d(nn.Module):
                 if self.bias != None:
                     self.bias.data = torch.cat([self.bias.data[:target_kernel], self.bias.data[target_kernel+1:]])
             self.out_channels -= 1
-            self.weight_shape[0] -= 1
+            self.weight_shape = self.weight.shape
             if self.out_channels != self.weight.shape[0] or self.weight_shape[0] != self.weight.shape[0]:
                 raise ValueError("Conv2d layer out_channels and weight dimension mismath")
             return target_kernel
@@ -74,7 +74,7 @@ class Custom_Conv2d(nn.Module):
             kept_indices = [i for i in range(self.in_channels) if i != target_kernel]
             self.weight.data = self.weight.data[:, kept_indices, :, :]
         self.in_channels -= 1
-        self.weight_shape[1] -= 1
+        self.weight_shape = self.weight.shape
         if self.in_channels != self.weight.shape[1] or self.weight_shape[1] != self.weight.shape[1]:
             raise ValueError("Conv2d layer in_channels and weight dimension mismath")
     
@@ -142,7 +142,7 @@ class Custom_Linear(nn.Module):
                 if self.bias != None:
                     self.bias.data = torch.cat([self.bias.data[:target_neuron], self.bias.data[target_neuron+1:]])
             self.out_features -= 1
-            self.weight_shape[0] -= 1
+            self.weight_shape = self.weight.shape
             if self.out_features != self.weight.shape[0] or self.weight_shape[0] != self.weight.shape[0]:
                 raise ValueError("Linear layer out_channels and weight dimension mismath")
             return target_neuron
@@ -152,8 +152,8 @@ class Custom_Linear(nn.Module):
             self.weight.data = torch.cat([self.weight.data[:, :start_index], self.weight.data[:, end_index:]], dim=1)
             self.bias.data = self.bias.data
         self.in_features = new_in_features
-        self.weight_shape[1] = new_in_features
-        if self.in_features != self.weight.shape[1] or self.weight_shape[1] != self.weight.shape[0]:
+        self.weight_shape = self.weight.shape
+        if self.in_features != self.weight.shape[1] or self.weight_shape[1] != self.weight.shape[1]:
             raise ValueError("Linear layer in_channels and weight dimension mismath")
     
     def quantization_hash_weights(self):
@@ -268,7 +268,8 @@ class VGG(nn.Module):
     
     
     def update_prune_probability_distribution(self,top1_pretrain_accuracy_tensors, prune_probability_distribution_tensors, step_length, probability_lower_bound, ppo_clip):
-        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)).unsqueeze(1)
+        distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
+        distribution_weight = distribution_weight.unsqueeze(1)
         weighted_distribution = torch.sum(prune_probability_distribution_tensors * distribution_weight, dim=0)
         new_prune_probability = self.prune_probability + step_length * (weighted_distribution - self.prune_probability)
         ratio = new_prune_probability / self.prune_probability
