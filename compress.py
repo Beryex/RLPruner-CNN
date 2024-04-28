@@ -96,7 +96,7 @@ def train(epoch: int):
             pbar.update(1)
             pbar.set_postfix(**{'loss (batch)': loss.item()})
 
-@torch.inference_mode()
+@torch.no_grad()
 def eval_training(epoch: int):
     net.eval()
     correct_1 = 0.0
@@ -134,7 +134,7 @@ def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
     best_new_net = get_best_generated_architecture(original_net)
     if best_new_net == None:
         if eac == True:
-            original_net.update_prune_probability_distribution(new_net_top1_accuracy_cache, prune_distribution_cache, 
+            original_net.update_prune_distribution(new_net_top1_accuracy_cache, prune_distribution_cache, 
                                                         step_length, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
         logging.info('All generated architectures are worse than the architecture in caches. Stop fully training on them')
         logging.info(f'Current prune probability distribution: {original_net.prune_distribution}')
@@ -172,7 +172,7 @@ def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
 
     correct_1 = 0.0
     best_new_net.eval()
-    with torch.inference_mode():
+    with torch.no_grad():
         for images, labels in test_loader:
             images = images.to(device)
             labels = labels.to(device)
@@ -203,7 +203,7 @@ def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
         logging.info('Generated net wins')
 
     if eac == True:
-        optimal_net.update_prune_probability_distribution(new_net_top1_accuracy_cache, prune_distribution_cache, 
+        optimal_net.update_prune_distribution(new_net_top1_accuracy_cache, prune_distribution_cache, 
                                                     step_length, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
 
     if best_net_index == 1:
@@ -230,7 +230,7 @@ def get_best_generated_architecture(original_net):
     
             correct_1 = 0.0
             generated_net.eval()
-            with torch.inference_mode():
+            with torch.no_grad():
                 for images, labels in test_loader:
                     images = images.to(device)
                     labels = labels.to(device)

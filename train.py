@@ -31,7 +31,7 @@ def train(epoch: int):
             pbar.update(1)
             pbar.set_postfix(**{'loss (batch)': loss.item()})
 
-@torch.inference_mode()
+@torch.no_grad()
 def eval_training(epoch: int):
     net.eval()
     correct_1 = 0.0

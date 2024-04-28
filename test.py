@@ -50,7 +50,7 @@ def test():
 
     net = torch.load('models/vgg16_cifar100_Original_1714258157.pkl').to(device)
     net.eval()
-    with torch.inference_mode():
+    with torch.no_grad():
         for (images, labels) in tqdm(test_loader, total=len(test_loader), desc='Testing round', unit='batch', leave=False):
             images = images.to(device)
             labels = labels.to(device)
@@ -73,7 +73,7 @@ def test():
     # begin testing
     compressed_net = torch.load('models/vgg16_cifar100_Original_1714260516.pkl').to(device)
     compressed_net.eval()
-    with torch.inference_mode():
+    with torch.no_grad():
         for (images, labels) in tqdm(test_loader, total=len(test_loader), desc='Testing round', unit='batch', leave=False):
             images = images.to(device)
             labels = labels.to(device)
