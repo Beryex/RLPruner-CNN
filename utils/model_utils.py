@@ -9,7 +9,7 @@ from torch import Tensor
 class Custom_Conv2d(nn.Module):
     def __init__(self, in_channels: Optional[int] = None, out_channels: Optional[int] = None, kernel_size: Optional[torch.Size] = None, stride = 1, padding = 0, bias = True, base_conv_layer: Optional[nn.Conv2d] = None):
         super(Custom_Conv2d, self).__init__()
-        if base_conv_layer == None:
+        if base_conv_layer is None:
             if in_channels is None or out_channels is None or kernel_size is None:
                 raise ValueError("Custom_Conv2d requires in_channels, out_channels, and kernel_size when no base_conv_layer is provided")
             temp_conv = nn.Conv2d(in_channels = in_channels, out_channels = out_channels, kernel_size = kernel_size, stride = stride, padding = padding, bias = bias)
@@ -32,7 +32,7 @@ class Custom_Conv2d(nn.Module):
             self.kernel_size = base_conv_layer.kernel_size
             self.weight = nn.Parameter(base_conv_layer.weight.data.detach())
             self.weight_shape = base_conv_layer.weight.shape
-            if base_conv_layer.bias != None:
+            if base_conv_layer.bias is not None:
                 self.bias = nn.Parameter(base_conv_layer.bias.data.detach())
             else:
                 self.bias = None
@@ -45,7 +45,7 @@ class Custom_Conv2d(nn.Module):
         return f'Custom_Conv2d({self.in_channels}, {self.out_channels}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, bias={False if self.bias is None else True})'
     
     def forward(self, x: Tensor):
-        if self.weight_indices == None:
+        if self.weight_indices is None:
             actual_weight = self.weight
         else:
             actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
@@ -54,7 +54,7 @@ class Custom_Conv2d(nn.Module):
 
 
     def prune_kernel(self):
-        if self.weight_indices == None:
+        if self.weight_indices is None:
             # weight is still normal, not cluster
             if self.out_channels - 1 == 0:
                 return None
@@ -62,7 +62,7 @@ class Custom_Conv2d(nn.Module):
             target_kernel = torch.argmin(weight_variances).item()
             with torch.no_grad():
                 self.weight.data = torch.cat([self.weight.data[:target_kernel], self.weight.data[target_kernel+1:]], dim=0)
-                if self.bias != None:
+                if self.bias is not None:
                     self.bias.data = torch.cat([self.bias.data[:target_kernel], self.bias.data[target_kernel+1:]])
             self.out_channels -= 1
             self.weight_shape = self.weight.shape
@@ -95,7 +95,7 @@ class Custom_Conv2d(nn.Module):
 class Custom_Linear(nn.Module):
     def __init__(self, in_features: Optional[int] = None, out_features: Optional[int] = None, bias = True, base_linear_layer: Optional[nn.Linear] = None):
         super(Custom_Linear, self).__init__()
-        if base_linear_layer == None:
+        if base_linear_layer is None:
             if in_features is None or out_features is None:
                 raise ValueError("Custom_Linear requires in_features, out_features when no base_linear_layer is provided")
             temp_linear = nn.Linear(in_features = in_features, out_features = out_features, bias = bias)
@@ -123,7 +123,7 @@ class Custom_Linear(nn.Module):
         return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features}, bias={False if self.bias is None else True})'
     
     def forward(self, x: Tensor):
-        if self.weight_indices == None:
+        if self.weight_indices is None:
             actual_weight = self.weight
         else:
             actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
@@ -132,7 +132,7 @@ class Custom_Linear(nn.Module):
     
 
     def prune_neuron(self):
-        if self.weight_indices == None:
+        if self.weight_indices is None:
             # weight is still normal, not cluster
             if self.out_features - 1 == 0:
                 return None
@@ -140,7 +140,7 @@ class Custom_Linear(nn.Module):
             target_neuron = torch.argmin(weight_variances).item()
             with torch.no_grad():
                 self.weight.data = torch.cat([self.weight.data[:target_neuron], self.weight.data[target_neuron+1:]], dim=0)
-                if self.bias != None:
+                if self.bias is not None:
                     self.bias.data = torch.cat([self.bias.data[:target_neuron], self.bias.data[target_neuron+1:]])
             self.out_features -= 1
             self.weight_shape = self.weight.shape
