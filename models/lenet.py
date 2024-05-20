@@ -5,7 +5,7 @@ import torch.nn as nn
 from utils import Custom_Conv2d, Custom_Linear
 
 class LeNet5(nn.Module):
-    def __init__(self, in_channels=1, num_class=10):
+    def __init__(self, in_channels: int=1, num_class: int=10):
         super().__init__()
         self.conv_layers = nn.Sequential(
             Custom_Conv2d(in_channels, 6, 5, bias=False),

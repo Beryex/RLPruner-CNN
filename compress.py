@@ -12,8 +12,8 @@ import copy
 from thop import profile
 
 from conf import settings
-from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, 
-                   get_net_class, get_dataloader, setup_logging, WarmUpLR, PR_scheduler)
+from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
+                   get_dataloader, setup_logging, WarmUpLR, PR_scheduler, update_prune_distribution)
 
 def prune_architecture(top1_acc: float):
     global net
@@ -32,28 +32,7 @@ def prune_architecture(top1_acc: float):
     torch.save(net, f'models/{args.net}_{args.dataset}_Pruned_{start_time}.pkl')
 
 def quantize_architecture(top1_acc: float):
-    global net
-    global tolerance_times
-    global optimizer
-    global accuracy_threshold
-    global strategy
-    if tolerance_times >= 0:
-        net, model_index = copy.deepcopy(generate_architecture(net, top1_acc))
-        net = net.to(device)
-        if model_index == 0:
-            tolerance_times -= 1
-        optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
-        # save the module
-        if not os.path.isdir("models"):
-            os.mkdir("models")
-        torch.save(net, f'models/{args.net}_{args.dataset}_Quantized_{start_time}.pkl')
-    else:
-        strategy = "finished"
-        # save the module and break
-        if not os.path.isdir("models"):
-            os.mkdir("models")
-        torch.save(net, f'models/{args.net}_{args.dataset}_Quantized_{start_time}.pkl')
-
+    return
 
 def train(epoch: int):
     net.train()
@@ -93,8 +72,8 @@ def eval_training(epoch: int):
 
 
 def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
-    global new_net_top1_accuracy_cache
-    global prune_distribution_cache
+    global ReplayBuffer
+    global prune_distribution
     # initialize all evaluating variables
     top1_accuracy_tensors = torch.zeros(2)
     FLOPs_tensors = torch.zeros(2)
@@ -108,11 +87,9 @@ def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
     # generate architecture
     best_new_net = get_best_generated_architecture(original_net)
     if best_new_net == None:
-        if eac == True:
-            original_net.update_prune_distribution(new_net_top1_accuracy_cache, prune_distribution_cache, 
-                                                        step_length, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
+        prune_distribution = update_prune_distribution(ReplayBuffer, prune_distribution, settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
         logging.info('All generated architectures are worse than the architecture in caches. Stop fully training on them')
-        logging.info(f'Current prune probability distribution: {original_net.prune_distribution}')
+        logging.info(f'Current prune probability distribution: {prune_distribution}')
         return original_net, 0
     
     best_new_net = copy.deepcopy(best_new_net).to(device)
@@ -177,16 +154,13 @@ def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
         optimal_net = best_new_net
         logging.info('Generated net wins')
 
-    if eac == True:
-        optimal_net.update_prune_distribution(new_net_top1_accuracy_cache, prune_distribution_cache, 
-                                                    step_length, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
+    prune_distribution = update_prune_distribution(ReplayBuffer, prune_distribution, settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
 
     if best_net_index == 1:
         # clear the cache when architecture has been updated
-        new_net_top1_accuracy_cache = torch.zeros(generate_num)
-        prune_distribution_cache = torch.zeros(generate_num, net.prune_choices_num)
+        ReplayBuffer = torch.zeros(generate_num, 1 + net.prune_choices_num)
     logging.info(f'Current compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
-    logging.info(f'Current prune probability distribution: {optimal_net.prune_distribution}')
+    logging.info(f'Current prune probability distribution: {prune_distribution}')
     
     return optimal_net, best_net_index
 
@@ -200,8 +174,8 @@ def get_best_generated_architecture(original_net: nn.Module):
         for model_id in range(generate_num):
             # generate architecture
             generated_net = copy.deepcopy(original_net).to(device)
-            dev_prune_distribution_tensor = net_class.update_architecture(generated_net, prune_rate_scheduler.modification_num, strategy, 
-                                                                                settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
+            dev_prune_distribution_tensor = net_class.update_architecture(generated_net, prune_distribution, prune_rate_scheduler.modification_num, 
+                                                                          strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
     
             correct_1 = 0.0
             generated_net.eval()
@@ -219,24 +193,19 @@ def get_best_generated_architecture(original_net: nn.Module):
             pbar.update(1)
             net_list.append(generated_net)
             # only update cache when acc is higher in cache
-            global new_net_top1_accuracy_cache
-            global prune_distribution_cache
-            min_acc, min_idx = torch.min(new_net_top1_accuracy_cache, dim=0)
+            global ReplayBuffer
+            min_acc, min_idx = torch.min(ReplayBuffer[:, 0], dim=0)
             if dev_top1_accuracy_tensors[model_id] >= min_acc:
-                new_net_top1_accuracy_cache[min_idx] = dev_top1_accuracy_tensors[model_id]
-                prune_distribution_cache[min_idx] = dev_prune_distribution_tensor
+                ReplayBuffer[min_idx, 0] = dev_top1_accuracy_tensors[model_id]
+                ReplayBuffer[min_idx, 1:] = dev_prune_distribution_tensor
     best_net_index = torch.argmax(dev_top1_accuracy_tensors)
     best_generated_net = net_list[best_net_index]
 
     logging.info('Generated net Top1 Accuracy List: {}'.format(dev_top1_accuracy_tensors))
-    logging.info('Current new net top1 accuracy cache: {}'.format(new_net_top1_accuracy_cache))
-    logging.info('Current prune probability distribution cache: {}'.format(prune_distribution_cache))
+    logging.info('Current new net top1 accuracy cache: {}'.format(ReplayBuffer[:, 0]))
+    logging.info('Current prune probability distribution cache: {}'.format(ReplayBuffer[:, 1:]))
     logging.info(f'Net {best_net_index} is the best new net')
     return best_generated_net
-    '''if torch.max(dev_top1_accuracy_tensors) >= torch.max(new_net_top1_accuracy_cache) - 0.005:
-        return best_generated_net
-    else:
-        return None'''
 
 
 def compute_score(top1_accuracy_tensors: Tensor):
@@ -260,7 +229,6 @@ def get_args():
     parser.add_argument('-crit', '--criteria', type=str, default='accuracy', help='compressed the model with accuracy_threshold or compression_threshold')
     parser.add_argument('-at', '--accuracy_threshold', type=float, default=None, help='the final accuracy the architecture will achieve')
     parser.add_argument('-ct', '--compression_threshold', type=float, default=None, help='the final compression ratio the architecture will achieve')
-    parser.add_argument('-eac', '--enable_adptive_compression', action='store_true', default=False, help='Enable adaptive compress if set')
     parser.add_argument('-lr', type=float, default=settings.INITIAL_LR, help='initial learning rate')
     parser.add_argument('-lr_decay', type=float, default=settings.LR_DECAY, help='learning rate decay rate')
     parser.add_argument('-b', type=int, default=settings.BATCH_SIZE, help='batch size for dataloader')
@@ -304,7 +272,7 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = int(time.time())
+    start_time = 1
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='compress')
@@ -316,39 +284,29 @@ if __name__ == '__main__':
     # process input arguments
     training_loader, prototyping_loader, test_loader, _, _ = get_dataloader(dataset=args.dataset, batch_size=args.b)
     net_class = get_net_class(args.net)
-    net = torch.load('models/vgg16_cifar100_Original_1714258157.pkl').to(device)  # replace it with the model gained by train.py
-    net.prune_distribution = torch.tensor([1/194, 1/194, 1/97, 1/97, 2/97, 2/97, 2/97, 4/97, 4/97, 4/97, 4/97, 4/97, 4/97, 32/97, 32/97])
+    net = torch.load('models/vgg16_cifar100_Original_1716174325.pkl').to(device)  # replace it with the model gained by train.py
     lr = args.lr
     gamma = args.lr_decay
     warm = args.warm
     
-    # set experiment parameter
+    # initialize lr rate
     current_lr = lr * gamma * gamma * gamma
     best_acc = 0.0
-    step_length = settings.STEP_LENGTH
+
+    # initialize compress parameter
     generate_num = settings.MAX_GENERATE_NUM
-    modification_num = settings.MAX_PRUNE_NUM
-    eac = args.enable_adptive_compression
-    if eac == True:
-        tolerance_times = settings.MAX_TOLERANCE_TIMES_EAC
-    else:
-        tolerance_times = settings.MAX_TOLERANCE_TIMES
-    strategy = "prune"
     dev_num = settings.DEV_NUM
     dev_pretrain_num = settings.DEV_PRETRAIN_NUM
+    strategy = "prune"
+
+    # initialize compress milestone
+    tolerance_times = settings.MAX_TOLERANCE_TIMES
     if args.criteria == 'accuracy':
         accuracy_threshold = args.accuracy_threshold
         compression_threshold = settings.DEFAULT_COMPRESSION_THRESHOLD
     else:
         accuracy_threshold = settings.DEFAULT_ACCURACY_THRESHOLD
         compression_threshold = args.compression_threshold
-
-    loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
-    iter_per_epoch = len(training_loader)
-    warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
-    prune_rate_scheduler = PR_scheduler(modification_num)
-
 
     # compute inital data
     if args.net == 'lenet5':
@@ -358,9 +316,26 @@ if __name__ == '__main__':
     custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
     original_FLOPs_num, original_para_num = profile(net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
     Para_compression_ratio = 1.0
-    new_net_top1_accuracy_cache = torch.zeros(generate_num)
-    prune_distribution_cache = torch.zeros(generate_num, net.prune_choices_num)
-    logging.info(f'Initial prune probability distribution: {net.prune_distribution}')
+
+    # initialize training parameter
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
+    iter_per_epoch = len(training_loader)
+    warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
+    prune_rate_scheduler = PR_scheduler(settings.MAX_PRUNE_NUM)
+
+    # initialize reinforcement learning parameter
+    prune_distribution = torch.zeros(net.prune_choices_num)
+    for idx, layer_idx in enumerate(net.prune_choices):
+        if idx <= net.last_conv_layer_idx:
+            layer = net.conv_layers[layer_idx]
+            prune_distribution[idx] = layer.out_channels
+        else:
+            layer = net.linear_layers[layer_idx]
+            prune_distribution[idx] = layer.out_features
+    prune_distribution = prune_distribution / torch.sum(prune_distribution)
+    ReplayBuffer = torch.zeros(generate_num, 1 + net.prune_choices_num)
+    logging.info(f'Initial prune probability distribution: {prune_distribution}')
 
     
     for epoch in range(1, settings.DYNAMIC_EPOCH + 1):

@@ -65,8 +65,8 @@ class VGG16(nn.Module):
         )
 
         self.prune_choices_num = 15
+        self.last_conv_layer_idx = 12
         self.prune_choices = torch.tensor([0, 3, 7, 10, 14, 17, 20, 24, 27, 30, 34, 37, 40, 0, 3])
-        self.prune_distribution = torch.tensor([1/194, 1/194, 1/97, 1/97, 2/97, 2/97, 2/97, 4/97, 4/97, 4/97, 4/97, 4/97, 4/97, 32/97, 32/97])
 
     def forward(self, x: Tensor):
         x = self.conv_layers(x)
@@ -75,10 +75,10 @@ class VGG16(nn.Module):
         return x
 
 
-    def update_architecture(self, modification_num: int, strategy: str, noise_var: float = 0.01, probability_lower_bound: float = 0.005):
+    def update_architecture(self, prune_distribution: Tensor, modification_num: int, strategy: str, noise_var: float = 0.01, probability_lower_bound: float = 0.005):
         prune_counter = torch.zeros(self.prune_choices_num)
         noise = torch.randn(self.prune_choices_num) * noise_var
-        noised_distribution = self.prune_distribution + noise
+        noised_distribution = prune_distribution + noise
         noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)
         prune_counter = noised_distribution * modification_num
@@ -93,7 +93,7 @@ class VGG16(nn.Module):
                 target_layer = self.prune_choices[target_layer_idx].item()
                 count = int(count.item())
                 for _ in range(count):
-                    if target_layer_idx < 13:
+                    if target_layer_idx <= self.last_conv_layer_idx:
                         conv_action(target_layer)
                     else:
                         linear_action(target_layer)
@@ -101,19 +101,6 @@ class VGG16(nn.Module):
             raise ValueError('Invalid strategy provided')
         
         return noised_distribution
-    
-    
-    def update_prune_distribution(self,top1_pretrain_accuracy_tensors: Tensor, prune_distribution_tensors: Tensor, step_length: float, probability_lower_bound: float, ppo_clip: float):
-        '''distribution_weight = (top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors)) / torch.sum(top1_pretrain_accuracy_tensors - torch.min(top1_pretrain_accuracy_tensors))
-        distribution_weight = distribution_weight.unsqueeze(1)
-        weighted_distribution = torch.sum(prune_distribution_tensors * distribution_weight, dim=0)'''
-        weighted_distribution = prune_distribution_tensors[torch.argmax(top1_pretrain_accuracy_tensors, dim=0).item()]
-        new_prune_distribution = self.prune_distribution + step_length * (weighted_distribution - self.prune_distribution)
-        ratio = new_prune_distribution / self.prune_distribution
-        clipped_ratio = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip)
-        self.prune_distribution *= clipped_ratio
-        self.prune_distribution = torch.clamp(self.prune_distribution, min=probability_lower_bound)
-        self.prune_distribution /= torch.sum(self.prune_distribution)
 
 
     def prune_conv(self, target_layer: int):
@@ -134,7 +121,7 @@ class VGG16(nn.Module):
         if target_bn.num_features != target_bn.weight.shape[0]:
             raise ValueError(f'BatchNorm layer number_features {target_bn.num_features} and weight dimension {target_bn.weight.shape[0]} mismath')
 
-        if target_layer < 40:
+        if target_layer < self.prune_choices[self.last_conv_layer_idx]:
             target_layer += 1
             while (not isinstance(self.conv_layers[target_layer], Custom_Conv2d)):
                 target_layer += 1

@@ -1,11 +1,8 @@
 import torch
-from torch import Tensor
 import torch.nn as nn
 
-from utils import Custom_Conv2d, Custom_Linear
-
 class Inception(nn.Module):
-    def __init__(self, input_channels: int, n1x1: int, n3x3_reduce: int, n3x3: int, n5x5_reduce: int, n5x5: int, pool_proj: int):
+    def __init__(self, input_channels, n1x1, n3x3_reduce, n3x3, n5x5_reduce, n5x5, pool_proj):
         super().__init__()
 
         self.branch1_out = n1x1
@@ -15,17 +12,17 @@ class Inception(nn.Module):
 
         #1x1conv branch
         self.b1 = nn.Sequential(
-            Custom_Conv2d(input_channels, n1x1, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, n1x1, kernel_size=1, bias=False),
             nn.BatchNorm2d(n1x1),
             nn.ReLU(inplace=True)
         )
 
         #1x1conv -> 3x3conv branch
         self.b2 = nn.Sequential(
-            Custom_Conv2d(input_channels, n3x3_reduce, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, n3x3_reduce, kernel_size=1, bias=False),
             nn.BatchNorm2d(n3x3_reduce),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(n3x3_reduce, n3x3, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(n3x3_reduce, n3x3, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n3x3),
             nn.ReLU(inplace=True)
         )
@@ -35,13 +32,13 @@ class Inception(nn.Module):
         #of 1 5x5 filters to obtain the same receptive
         #field with fewer parameters
         self.b3 = nn.Sequential(
-            Custom_Conv2d(input_channels, n5x5_reduce, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, n5x5_reduce, kernel_size=1, bias=False),
             nn.BatchNorm2d(n5x5_reduce),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(n5x5_reduce, n5x5, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(n5x5_reduce, n5x5, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n5x5, n5x5),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(n5x5, n5x5, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(n5x5, n5x5, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n5x5),
             nn.ReLU(inplace=True)
         )
@@ -50,15 +47,15 @@ class Inception(nn.Module):
         #same conv
         self.b4 = nn.Sequential(
             nn.MaxPool2d(3, stride=1, padding=1),
-            Custom_Conv2d(input_channels, pool_proj, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, pool_proj, kernel_size=1, bias=False),
             nn.BatchNorm2d(pool_proj),
             nn.ReLU(inplace=True)
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x):
         return torch.cat([self.b1(x), self.b2(x), self.b3(x), self.b4(x)], dim=1)
     
-    def prune_inception(self):
+    def prune_kernel(self):
         branch_choices = torch.tensor([1, 2, 3, 4])
         target_branch = torch.randint(0, len(branch_choices), (1,)).item()
         target_branch = branch_choices[target_branch]
@@ -124,26 +121,64 @@ class Inception(nn.Module):
                 new_conv2.weight.data = target_branch[target_layer + 3].weight.data[:, kept_indices, :, :]
             target_branch[target_layer + 3] = new_conv2
             return None, target_kernel
+    
+    def change_activation_function(self):
+        branch_choices = torch.tensor([1, 2, 3, 4])
+        target_branch = torch.randint(0, len(branch_choices), (1,)).item()
+        target_branch = branch_choices[target_branch]
+        if target_branch == 1:
+            target_branch = self.b1
+            target_layer = 2
+        elif target_branch == 2:
+            target_branch = self.b2
+            layer_choices = torch.tensor([2, 5])
+            target_layer = torch.randint(0, len(layer_choices), (1,)).item()
+            target_layer = layer_choices[target_layer]
+        elif target_branch == 3:
+            target_branch = self.b3
+            layer_choices = torch.tensor([2, 5, 8])
+            target_layer = torch.randint(0, len(layer_choices), (1,)).item()
+            target_layer = layer_choices[target_layer]
+        elif target_branch == 4:
+            target_branch = self.b4
+            target_layer = 3
+        p1 = torch.rand(1).item()
+        if p1 < 0.2:
+            target_branch[target_layer] = torch.nn.ReLU(inplace=True)
+        elif p1 < 0.4:
+            target_branch[target_layer] = torch.nn.Tanh()
+        elif p1 < 0.6:
+            target_branch[target_layer] = torch.nn.LeakyReLU(inplace=True)
+        elif p1 < 0.8:
+            target_branch[target_layer] = torch.nn.Sigmoid()
+        else:
+            target_branch[target_layer] = torch.nn.ELU(inplace=True)
 
 
 class GoogleNet(nn.Module):
     def __init__(self, in_channels=3, num_class=100):
         super().__init__()
         self.prelayer = nn.Sequential(
-            Custom_Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(64, 192, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(64, 192, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(192),
             nn.ReLU(inplace=True),
         )
 
+        #although we only use 1 conv layer as prelayer,
+        #we still use name a3, b3.......
         self.a3 = Inception(192, 64, 96, 128, 16, 32, 32)
         self.b3 = Inception(256, 128, 128, 192, 32, 96, 64)
 
+        ##"""In general, an Inception network is a network consisting of
+        ##modules of the above type stacked upon each other, with occasional
+        ##max-pooling layers with stride 2 to halve the resolution of the
+        ##grid"""
         self.maxpool = nn.MaxPool2d(3, stride=2, padding=1)
 
         self.a4 = Inception(480, 192, 96, 208, 16, 48, 64)
@@ -179,6 +214,10 @@ class GoogleNet(nn.Module):
         x = self.a5(x)
         x = self.b5(x)
 
+        #"""It was found that a move from fully connected layers to
+        #average pooling improved the top-1 accuracy by about 0.6%,
+        #however the use of dropout remained essential even after
+        #removing the fully connected layers."""
         x = self.avgpool(x)
         x = self.dropout(x)
         x = x.view(x.size()[0], -1)
@@ -186,11 +225,12 @@ class GoogleNet(nn.Module):
 
         return x
     
+    # define the function to resize the architecture kernel number
     def update_architecture(self, modification_num):
         update_times = int(modification_num + 1)
         for update_id in range(update_times):
             if torch.rand(1).item() < 0.05:
-                self.prune_inception()
+                self.prune_kernel()
             else:
                 self.prune_inception()
         if torch.rand(1).item() < 0:
@@ -199,7 +239,7 @@ class GoogleNet(nn.Module):
             else:
                 self.change_inception_activation_function()
     
-    def prune_inception(self):
+    def prune_kernel(self):
         target_branch = self.prelayer
         layer_choices = torch.tensor([0, 3, 6])
         target_layer = torch.randint(0, len(layer_choices), (1,)).item()
@@ -273,7 +313,7 @@ class GoogleNet(nn.Module):
             target_inception = self.a5
         else:
             target_inception = self.b5
-        ret, target_kernel = target_inception.prune_inception()
+        ret, target_kernel = target_inception.prune_kernel()
         # if ret = none, no need to modify next layer's input
         if ret == None:
             return
