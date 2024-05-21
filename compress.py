@@ -13,7 +13,7 @@ from thop import profile
 
 from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
-                   get_dataloader, setup_logging, WarmUpLR, PR_scheduler, update_prune_distribution)
+                   get_dataloader, setup_logging, WarmUpLR, PR_scheduler, update_prune_distribution, torch_set_seed)
 
 def prune_architecture(top1_acc: float):
     global net
@@ -147,12 +147,21 @@ def generate_architecture(original_net: nn.Module, local_top1_accuracy: float):
     FLOPs_compression_ratio = 1 - best_net_FLOPs / original_FLOPs_num
     Para_compression_ratio = 1 - best_net_Params / original_para_num
 
-    if best_net_index == 0:
-        optimal_net = original_net
-        logging.info('Original net wins')
+    # Use Epsilon-greedy exploration strategy
+    if torch.rand(1).item() < settings.EPSILON:
+        if torch.rand(1).item() < 0.5:
+            optimal_net = original_net
+            logging.info('Exploration: Original net wins')
+        else:
+            optimal_net = best_new_net
+            logging.info('Exploration: Generated net wins')
     else:
-        optimal_net = best_new_net
-        logging.info('Generated net wins')
+        if best_net_index == 0:
+            optimal_net = original_net
+            logging.info('Exploitation: Original net wins')
+        else:
+            optimal_net = best_new_net
+            logging.info('Exploitation: Generated net wins')
 
     prune_distribution = update_prune_distribution(ReplayBuffer, prune_distribution, settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
 
@@ -272,13 +281,13 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = 1
+    start_time = 2
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='compress')
     
     # reinitialize random seed
-    torch.manual_seed(start_time)
+    torch_set_seed(start_time)
     logging.info('Start with random seed: {}'.format(start_time))
 
     # process input arguments

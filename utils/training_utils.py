@@ -1,9 +1,22 @@
 import torch
 from conf import settings
 import os
+import random
+import numpy as np
 import logging
 from torch import Tensor
 from torch.optim.lr_scheduler import _LRScheduler
+
+
+def torch_set_seed(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
 
 def setup_logging(experiment_id: int, net: str, dataset: str, action: str):
