@@ -28,8 +28,19 @@ class PR_scheduler():
             return self.modification_num
 
 def update_prune_distribution(ReplayBuffer: Tensor, prune_distribution: Tensor, step_length: float, probability_lower_bound: float, ppo_clip: float):
-    weighted_distribution = ReplayBuffer[torch.argmax(ReplayBuffer[:, 0], dim=0).item(), 1:]
-    updated_prune_distribution = prune_distribution + step_length * (weighted_distribution - prune_distribution)
+    top1_accuracy_cache = ReplayBuffer[:, 0]
+    _, indices = torch.sort(top1_accuracy_cache, dim=0, descending=False)
+    mid_idx = top1_accuracy_cache.shape[0] // 2
+    negative_samples = ReplayBuffer[indices[:mid_idx]]
+    positive_samples = ReplayBuffer[indices[mid_idx:]]
+    
+    positive_weight = positive_samples[:, 0] / torch.sum(positive_samples[:, 0], dim=0, keepdim=True)
+    positive_distribution = torch.sum(positive_samples[:, 1:] * positive_weight.unsqueeze(1), dim=0)
+    negative_weight = (negative_samples[:, 0] - 1) / torch.sum(negative_samples[:, 0] - 1, dim=0, keepdim=True)
+    negative_distribution = torch.sum(negative_samples[:, 1:] * negative_weight.unsqueeze(1), dim=0)
+    updated_prune_distribution = prune_distribution + (step_length * (positive_distribution - prune_distribution) 
+                                                       - step_length * (negative_distribution - prune_distribution))
+    
     ratio = updated_prune_distribution / prune_distribution
     clipped_ratio = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip)
     updated_prune_distribution = prune_distribution * clipped_ratio
