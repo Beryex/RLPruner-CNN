@@ -7,7 +7,14 @@ from torch import Tensor
 
 
 class Custom_Conv2d(nn.Module):
-    def __init__(self, in_channels: Optional[int] = None, out_channels: Optional[int] = None, kernel_size: Optional[torch.Size] = None, stride = 1, padding = 0, bias = True, base_conv_layer: Optional[nn.Conv2d] = None):
+    def __init__(self, 
+                 in_channels: Optional[int] = None, 
+                 out_channels: Optional[int] = None, 
+                 kernel_size: Optional[torch.Size] = None, 
+                 stride: int = 1, 
+                 padding: int = 0, 
+                 bias: bool = True, 
+                 base_conv_layer: Optional[nn.Conv2d] = None):
         super(Custom_Conv2d, self).__init__()
         if base_conv_layer is None:
             if in_channels is None or out_channels is None or kernel_size is None:
@@ -44,7 +51,8 @@ class Custom_Conv2d(nn.Module):
     def __repr__(self):
         return f'Custom_Conv2d({self.in_channels}, {self.out_channels}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, bias={False if self.bias is None else True})'
     
-    def forward(self, x: Tensor):
+    def forward(self, 
+                x: Tensor):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
@@ -70,7 +78,8 @@ class Custom_Conv2d(nn.Module):
                 raise ValueError(f'Conv2d layer out_channels {self.out_channels} and weight dimension {self.weight.shape[0]} mismath')
             return target_kernel
     
-    def decre_input(self, target_kernel: int):
+    def decre_input(self, 
+                    target_kernel: int):
         with torch.no_grad():
             kept_indices = [i for i in range(self.in_channels) if i != target_kernel]
             self.weight.data = self.weight.data[:, kept_indices, :, :]
@@ -93,7 +102,11 @@ class Custom_Conv2d(nn.Module):
         self.weight = torch.nn.Parameter(clustered_weights)
 
 class Custom_Linear(nn.Module):
-    def __init__(self, in_features: Optional[int] = None, out_features: Optional[int] = None, bias = True, base_linear_layer: Optional[nn.Linear] = None):
+    def __init__(self, 
+                 in_features: Optional[int] = None, 
+                 out_features: Optional[int] = None, 
+                 bias: bool = True, 
+                 base_linear_layer: Optional[nn.Linear] = None):
         super(Custom_Linear, self).__init__()
         if base_linear_layer is None:
             if in_features is None or out_features is None:
@@ -122,7 +135,8 @@ class Custom_Linear(nn.Module):
     def __repr__(self):
         return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features}, bias={False if self.bias is None else True})'
     
-    def forward(self, x: Tensor):
+    def forward(self, 
+                x: Tensor):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
@@ -148,7 +162,10 @@ class Custom_Linear(nn.Module):
                 raise ValueError(f'Linear layer out_channels {self.out_features} and weight dimension {self.weight.shape[0]} mismath')
             return target_neuron
     
-    def decre_input(self, new_in_features: int, start_index: int, end_index: int):
+    def decre_input(self, 
+                    new_in_features: int, 
+                    start_index: int, 
+                    end_index: int):
         with torch.no_grad():
             self.weight.data = torch.cat([self.weight.data[:, :start_index], self.weight.data[:, end_index:]], dim=1)
             self.bias.data = self.bias.data
@@ -170,17 +187,23 @@ class Custom_Linear(nn.Module):
         self.weight_indices = labels
         self.weight = torch.nn.Parameter(clustered_weights)
 
-def count_custom_conv2d(m: Custom_Conv2d, x: Tensor, y: Tensor):
+def count_custom_conv2d(m: Custom_Conv2d, 
+                        x: Tensor, 
+                        y: Tensor):
     x = x[0]
     kernel_ops = m.weight_shape[2] * m.weight_shape[3]
     total_ops = y.nelement() * (m.weight_shape[1] * kernel_ops) # assume not using group convolution
     m.total_ops += torch.DoubleTensor([int(total_ops)])
 
-def count_custom_linear(m: Custom_Linear, x: Tensor, y: Tensor):
+def count_custom_linear(m: Custom_Linear, 
+                        x: Tensor, 
+                        y: Tensor):
     total_ops = y.nelement() * x[0].nelement() / y.size(0)
     m.total_ops += torch.DoubleTensor([int(total_ops)])
 
-def get_network(net: str, in_channels: int, num_class: int):
+def get_network(net: str, 
+                in_channels: int, 
+                num_class: int):
     if net == 'vgg16':
         from models.vgg import VGG16
         ret = VGG16(in_channels, num_class)

@@ -1,9 +1,11 @@
-# hyperparameter for model
+# hyperparameter for Reinforcement Learning
 STEP_LENGTH = 0.8
 NOISE_VAR = 0.01
 PPO_CLIP = 0.2
 PROBABILITY_LOWER_BOUND = 0
-EPSILON = 0.2
+GREEDY_EPSILON = 0
+DISCOUNT_FACTOR = 0.9
+MAX_GENERATE_NUM = 8 
 
 
 # hyperparameter for dataset
@@ -25,8 +27,7 @@ ORIGINAL_EPOCH = 130
 ORIGINAL_MILESTONES = [40, 80, 100]
 
 
-# hyperparameter for compressing
-MAX_GENERATE_NUM = 8            
+# hyperparameter for compressing         
 MAX_TOLERANCE_TIMES = 20
 TOLERANCE_MILESTONES = [5, 10, 15]
 DYNAMIC_EPOCH = 200

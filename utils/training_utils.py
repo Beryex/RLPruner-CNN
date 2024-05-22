@@ -5,6 +5,7 @@ import random
 import numpy as np
 import logging
 from torch import Tensor
+import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 
 
@@ -19,7 +20,10 @@ def torch_set_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def setup_logging(experiment_id: int, net: str, dataset: str, action: str):
+def setup_logging(experiment_id: int, 
+                  net: str, 
+                  dataset: str, 
+                  action: str):
     log_directory = "experiment_log"
     if not os.path.isdir(log_directory):
         os.mkdir(log_directory)
@@ -41,7 +45,10 @@ def setup_logging(experiment_id: int, net: str, dataset: str, action: str):
     hyperparams_info = "\n".join(f"{key}={value}" for key, value in settings.__dict__.items())
     logging.info(f"Experiment hyperparameters:\n{hyperparams_info}")
 
-def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+def dice_coeff(input: Tensor, 
+               target: Tensor, 
+               reduce_batch_first: bool = False, 
+               epsilon: float = 1e-6):
     # Average of Dice coefficient for all batches, or for a single mask
     assert input.size() == target.size()
     assert input.dim() == 3 or not reduce_batch_first
@@ -55,11 +62,16 @@ def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, 
     dice = (inter + epsilon) / (sets_sum + epsilon)
     return dice.mean()
 
-def multiclass_dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+def multiclass_dice_coeff(input: Tensor, 
+                          target: Tensor, 
+                          reduce_batch_first: bool = False, 
+                          epsilon: float = 1e-6):
     # Average of Dice coefficient for all classes
     return dice_coeff(input.flatten(0, 1), target.flatten(0, 1), reduce_batch_first, epsilon)
 
-def dice_loss(input: Tensor, target: Tensor, multiclass: bool = False):
+def dice_loss(input: Tensor, 
+              target: Tensor, 
+              multiclass: bool = False):
     # Dice loss (objective to minimize) between 0 and 1
     fn = multiclass_dice_coeff if multiclass else dice_coeff
     return 1 - fn(input, target, reduce_batch_first=True)
@@ -70,7 +82,10 @@ class WarmUpLR(_LRScheduler):
         optimizer: optimzier(e.g. SGD)
         total_iters: totoal_iters of warmup phase
     """
-    def __init__(self, optimizer, total_iters, last_epoch=-1):
+    def __init__(self, 
+                 optimizer: optim.Optimizer, 
+                 total_iters: int, 
+                 last_epoch:int = -1):
 
         self.total_iters = total_iters
         super().__init__(optimizer, last_epoch)

@@ -9,7 +9,7 @@ from tqdm import tqdm
 import logging
 
 from conf import settings
-from utils import get_network, get_dataloader, setup_logging, WarmUpLR
+from utils import get_network, get_dataloader, setup_logging, WarmUpLR, torch_set_seed
 
 
 def train(epoch: int):
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='train')
 
     # initialize random seed
-    torch.manual_seed(start_time)
+    torch_set_seed(start_time)
     logging.info(f'Start with random seed: {start_time}')
     
     # process input arguments

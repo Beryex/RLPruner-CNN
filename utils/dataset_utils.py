@@ -5,7 +5,11 @@ from torch.utils.data import DataLoader, random_split
 from conf import settings
 
 
-def get_dataloader(dataset: str, batch_size=16, num_workers=2, shuffle=True, dataset_proportion=0.2):
+def get_dataloader(dataset: str, 
+                   batch_size: int = 16, 
+                   num_workers: int = 2, 
+                   shuffle: bool =True, 
+                   dataset_proportion: float = 0.2):
     if dataset == 'mnist':
         in_channels = 1
         num_class = 10

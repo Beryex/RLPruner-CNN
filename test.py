@@ -8,7 +8,7 @@ from models.vgg import Custom_Conv2d, Custom_Linear
 from tqdm import tqdm
 
 from conf import settings
-from utils import setup_logging, get_dataloader, count_custom_conv2d, count_custom_linear
+from utils import setup_logging, get_dataloader, count_custom_conv2d, count_custom_linear, torch_set_seed
 
 
 def get_args():
@@ -102,6 +102,7 @@ if __name__ == '__main__':
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='test')
 
+    torch_set_seed(start_time)
     torch.manual_seed(start_time)
     logging.info(f'Start with random seed: {start_time}')
 

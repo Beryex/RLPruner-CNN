@@ -5,7 +5,9 @@ import torch.nn as nn
 from utils import Custom_Conv2d, Custom_Linear
 
 class VGG16(nn.Module):
-    def __init__(self, in_channels: int =3, num_class: int =100):
+    def __init__(self, 
+                 in_channels: int =3, 
+                 num_class: int =100):
         super().__init__()
         self.conv_layers = nn.Sequential(
             Custom_Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False),
@@ -68,20 +70,25 @@ class VGG16(nn.Module):
         self.last_conv_layer_idx = 12
         self.prune_choices = torch.tensor([0, 3, 7, 10, 14, 17, 20, 24, 27, 30, 34, 37, 40, 0, 3])
 
-    def forward(self, x: Tensor):
+    def forward(self, 
+                x: Tensor):
         x = self.conv_layers(x)
         x = x.view(x.size()[0], -1)
         x = self.linear_layers(x)
         return x
 
 
-    def update_architecture(self, prune_distribution: Tensor, modification_num: int, strategy: str, noise_var: float = 0.01, probability_lower_bound: float = 0.005):
+    def update_architecture(self, 
+                            prune_distribution: Tensor, 
+                            modification_num: int, strategy: str, 
+                            noise_var: float = 0.01, 
+                            probability_lower_bound: float = 0.005):
         prune_counter = torch.zeros(self.prune_choices_num)
         noise = torch.randn(self.prune_choices_num) * noise_var
         noised_distribution = prune_distribution + noise
         noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)
-        prune_counter = noised_distribution * modification_num
+        prune_counter = torch.round(noised_distribution * modification_num)
         
         conv_action, linear_action = {
             'prune': (self.prune_conv, self.prune_linear),
@@ -91,8 +98,7 @@ class VGG16(nn.Module):
         if conv_action and linear_action:
             for target_layer_idx, count in enumerate(prune_counter):
                 target_layer = self.prune_choices[target_layer_idx].item()
-                count = int(count.item())
-                for _ in range(count):
+                for _ in range(int(count.item())):
                     if target_layer_idx <= self.last_conv_layer_idx:
                         conv_action(target_layer)
                     else:
@@ -103,7 +109,8 @@ class VGG16(nn.Module):
         return noised_distribution
 
 
-    def prune_conv(self, target_layer: int):
+    def prune_conv(self, 
+                   target_layer: int):
         # prune kernel
         target_kernel = self.conv_layers[target_layer].prune_kernel()
         if target_kernel is None:
@@ -134,7 +141,8 @@ class VGG16(nn.Module):
             end_index = start_index + output_length ** 2
             self.linear_layers[0].decre_input(new_in_features, start_index, end_index)
 
-    def prune_linear(self, target_layer: int):
+    def prune_linear(self, 
+                     target_layer: int):
         target_neuron = self.linear_layers[target_layer].prune_neuron()
         if target_neuron is None:
             return
@@ -144,8 +152,10 @@ class VGG16(nn.Module):
         end_index = target_neuron + 1
         self.linear_layers[target_layer + 3].decre_input(new_in_features, start_index, end_index)
     
-    def quantize_conv(self, target_layer: int):
+    def quantize_conv(self, 
+                      target_layer: int):
         self.conv_layers[target_layer].quantization_hash_weights()
     
-    def quantize_linear(self, target_layer: int):
+    def quantize_linear(self, 
+                        target_layer: int):
         self.linear_layers[target_layer].quantization_hash_weights()
