@@ -25,12 +25,14 @@ def prune_architecture(top1_acc: float):
     net = net.to(device)
     optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
     ret = prune_rate_scheduler.step(model_index)
+    if model_index == 1: # means generated architecture is better
+        # save the module
+        if not os.path.isdir("models"):
+            os.mkdir("models")
+        torch.save(net, f'models/{args.net}_{args.dataset}_Pruned_{start_time}.pkl')
+    
     if ret is None:
         strategy = "finished"
-    # save the module
-    if not os.path.isdir("models"):
-        os.mkdir("models")
-    torch.save(net, f'models/{args.net}_{args.dataset}_Pruned_{start_time}.pkl')
 
 def quantize_architecture(top1_acc: float):
     return
