@@ -10,6 +10,7 @@ from tqdm import tqdm
 import logging
 import copy
 from thop import profile
+import torch.multiprocessing as mp
 
 from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
@@ -256,6 +257,7 @@ def get_args():
     parser.add_argument('-lr', type=float, default=settings.INITIAL_LR, help='initial learning rate')
     parser.add_argument('-lr_decay', type=float, default=settings.LR_DECAY, help='learning rate decay rate')
     parser.add_argument('-b', type=int, default=settings.BATCH_SIZE, help='batch size for dataloader')
+    parser.add_argument('-n', type=int, default=settings.NUM_WORKERS, help='num_workers for dataloader')
 
     args = parser.parse_args()
     check_args(args)
@@ -297,7 +299,7 @@ def check_args(args: argparse.Namespace):
 
 if __name__ == '__main__':
     start_time = 5
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='compress')
     
@@ -306,7 +308,7 @@ if __name__ == '__main__':
     logging.info('Start with random seed: {}'.format(start_time))
 
     # process input arguments
-    training_loader, prototyping_loader, test_loader, _, _ = get_dataloader(dataset=args.dataset, batch_size=args.b)
+    training_loader, prototyping_loader, test_loader, _, _ = get_dataloader(dataset=args.dataset, batch_size=args.b, num_workers=args.n, pin_memory=True)
     net_class = get_net_class(args.net)
     net = torch.load('models/vgg16_cifar100_Original_1716174325.pkl').to(device)  # replace it with the model gained by train.py
     lr = args.lr
