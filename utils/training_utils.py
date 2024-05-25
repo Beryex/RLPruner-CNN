@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 
 
-def torch_set_seed(seed):
+def torch_set_random_seed(seed):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)

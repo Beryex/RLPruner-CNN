@@ -91,8 +91,8 @@ class VGG16(nn.Module):
         prune_counter = torch.round(noised_distribution * modification_num)
         
         conv_action, linear_action = {
-            'prune': (self.prune_conv, self.prune_linear),
-            'quantize': (self.quantize_conv, self.quantize_linear)
+            'prune_filter': (self.prune_filter_conv, self.prune_filter_linear),
+            'weight_sharing': (self.weight_sharing_conv, self.weight_sharing_linear)
         }.get(strategy, (None, None))
 
         if conv_action and linear_action:
@@ -109,7 +109,7 @@ class VGG16(nn.Module):
         return noised_distribution
 
 
-    def prune_conv(self, 
+    def prune_filter_conv(self, 
                    target_layer: int):
         # prune kernel
         target_kernel = self.conv_layers[target_layer].prune_kernel()
@@ -141,7 +141,7 @@ class VGG16(nn.Module):
             end_index = start_index + output_length ** 2
             self.linear_layers[0].decre_input(new_in_features, start_index, end_index)
 
-    def prune_linear(self, 
+    def prune_filter_linear(self, 
                      target_layer: int):
         target_neuron = self.linear_layers[target_layer].prune_neuron()
         if target_neuron is None:
@@ -152,10 +152,10 @@ class VGG16(nn.Module):
         end_index = target_neuron + 1
         self.linear_layers[target_layer + 3].decre_input(new_in_features, start_index, end_index)
     
-    def quantize_conv(self, 
+    def weight_sharing_conv(self, 
                       target_layer: int):
         self.conv_layers[target_layer].quantization_hash_weights()
     
-    def quantize_linear(self, 
+    def weight_sharing_linear(self, 
                         target_layer: int):
         self.linear_layers[target_layer].quantization_hash_weights()

@@ -14,14 +14,13 @@ import torch.multiprocessing as mp
 
 from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
-                   get_dataloader, setup_logging, WarmUpLR, PR_scheduler, update_prune_distribution, torch_set_seed)
+                   get_dataloader, setup_logging, WarmUpLR, PR_scheduler, torch_set_random_seed)
 
-def prune_architecture(top1_acc: float):
-    global net
-    global optimizer
-    global strategy
-
-    net, model_index = copy.deepcopy(get_optimal_architecture(net, top1_acc))
+def prune_architecture(net: nn.Module, 
+                       top1_acc: float, 
+                       prune_rate_scheduler: PR_scheduler):
+    
+    net, model_index = copy.deepcopy(get_optimal_architecture(net, top1_acc, prune_rate_scheduler))
     net = net.to(device)
     optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
     ret = prune_rate_scheduler.step(model_index)
@@ -29,13 +28,15 @@ def prune_architecture(top1_acc: float):
         # save the module
         if not os.path.isdir("models"):
             os.mkdir("models")
-        torch.save(net, f'models/{args.net}_{args.dataset}_Pruned_{start_time}.pkl')
+        torch.save(net, f'models/{args.net}_{args.dataset}_{prune_rate_scheduler.strategy}_{start_time}.pkl')
     
     if ret is None:
-        strategy = "finished"
+        if prune_rate_scheduler.strategy == "prune_filter":
+            prune_rate_scheduler = PR_scheduler("weight_sharing")
+        else:
+            prune_rate_scheduler = PR_scheduler("finished")
+    return net, optimizer, prune_rate_scheduler
 
-def quantize_architecture(top1_acc: float):
-    return
 
 def train_network(target_net: nn.Module, 
           target_optimizer: optim.Optimizer, 
@@ -99,9 +100,8 @@ def eval_network(target_net: nn.Module,
 
 
 def get_optimal_architecture(original_net: nn.Module, 
-                             local_top1_accuracy: float):
-    global prune_distribution
-    global ReplayBuffer
+                             local_top1_accuracy: float, 
+                             prune_rate_scheduler: PR_scheduler):
     # initialize all evaluating variables
     top1_accuracy_tensors = torch.zeros(2)
     FLOPs_tensors = torch.zeros(2)
@@ -113,11 +113,11 @@ def get_optimal_architecture(original_net: nn.Module,
     parameter_num_tensors[0] = local_parameter_num
 
     # generate architecture
-    best_new_net = get_best_generated_architecture(original_net)
+    best_new_net = get_best_generated_architecture(original_net, prune_rate_scheduler)
     if best_new_net == None:
-        prune_distribution = update_prune_distribution(ReplayBuffer, prune_distribution, settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
+        prune_rate_scheduler.update_prune_distribution(settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
         logging.info('All generated architectures are worse than the architecture in caches. Stop fully training on them')
-        logging.info(f'Current prune probability distribution: {prune_distribution}')
+        logging.info(f'Current prune probability distribution: {prune_rate_scheduler.prune_distribution}')
         return original_net, 0
     
     best_new_net = copy.deepcopy(best_new_net).to(device)
@@ -168,18 +168,16 @@ def get_optimal_architecture(original_net: nn.Module,
     FLOPs_compression_ratio = 1 - optimal_net_FLOPs / original_FLOPs_num
     Para_compression_ratio = 1 - optimal_net_Params / original_para_num
 
-    prune_distribution = update_prune_distribution(ReplayBuffer, prune_distribution, settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
+    prune_rate_scheduler.update_prune_distribution(settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
 
-    if optimal_net_index == 1:
-        # clear the cache when architecture has been updated
-        ReplayBuffer = torch.zeros(generate_num, 1 + net.prune_choices_num)
     logging.info(f'Current compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
-    logging.info(f'Current prune probability distribution: {prune_distribution}')
+    logging.info(f'Current prune probability distribution: {prune_rate_scheduler.prune_distribution}')
     
     return optimal_net, optimal_net_index
 
 
-def get_best_generated_architecture(original_net: nn.Module):
+def get_best_generated_architecture(original_net: nn.Module,
+                                    prune_rate_scheduler: PR_scheduler):
     # initialize all evaluating variables
     net_list = []
 
@@ -190,18 +188,18 @@ def get_best_generated_architecture(original_net: nn.Module):
         for model_id_1 in range(generate_num):
             # generate architecture level 1
             generated_net_1 = copy.deepcopy(original_net).to(device)
-            prune_distribution_action_1 = net_class.update_architecture(generated_net_1, prune_distribution, prune_rate_scheduler.modification_num, 
-                                                                          strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
+            prune_distribution_action_1 = net_class.update_architecture(generated_net_1, prune_rate_scheduler.prune_distribution, prune_rate_scheduler.modification_num, 
+                                                                        prune_rate_scheduler.strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
             top1_acc_1,_ = eval_network(generated_net_1, test_loader, epoch=-1, dev=True)
 
             Q_value_1[model_id_1] = top1_acc_1
 
-            Q_value_2 = torch.zeros(generate_num)
+            '''Q_value_2 = torch.zeros(generate_num)
             for model_id_2 in range(generate_num):
                 # generate architecture level 2
                 generated_net_2 = copy.deepcopy(generated_net_1).to(device)
-                prune_distribution_action_2 = net_class.update_architecture(generated_net_2, prune_distribution, prune_rate_scheduler.modification_num, 
-                                                                            strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
+                prune_distribution_action_2 = net_class.update_architecture(generated_net_2, prune_rate_scheduler.prune_distribution, prune_rate_scheduler.modification_num, 
+                                                                            prune_rate_scheduler.strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
                 # use Reward cache to avoid repetition
                 key = torch.round(prune_distribution_action_1 * prune_rate_scheduler.modification_num).int() + torch.round(prune_distribution_action_2 * prune_rate_scheduler.modification_num).int()
                 tuple_key = tuple(key.tolist())
@@ -214,23 +212,22 @@ def get_best_generated_architecture(original_net: nn.Module):
                 
                 Reward_cache[tuple_key] = Q_value_2[model_id_2]
 
-            Q_value_1[model_id_1] += settings.DISCOUNT_FACTOR * torch.max(Q_value_2)
+            Q_value_1[model_id_1] += settings.DISCOUNT_FACTOR * torch.max(Q_value_2)'''
 
             pbar.update(1)
             net_list.append(generated_net_1)
 
             # only update cache when acc is higher in cache
-            global ReplayBuffer
-            min_acc, min_idx = torch.min(ReplayBuffer[:, 0], dim=0)
+            min_acc, min_idx = torch.min(prune_rate_scheduler.ReplayBuffer[:, 0], dim=0)
             if Q_value_1[model_id_1] >= min_acc:
-                ReplayBuffer[min_idx, 0] = Q_value_1[model_id_1]
-                ReplayBuffer[min_idx, 1:] = prune_distribution_action_1
+                prune_rate_scheduler.ReplayBuffer[min_idx, 0] = Q_value_1[model_id_1]
+                prune_rate_scheduler.ReplayBuffer[min_idx, 1:] = prune_distribution_action_1
     best_net_index = torch.argmax(Q_value_1)
     best_generated_net = net_list[best_net_index]
 
     logging.info('Generated net Q value List: {}'.format(Q_value_1))
-    logging.info('Current new net Q value cache: {}'.format(ReplayBuffer[:, 0]))
-    logging.info('Current prune probability distribution cache: {}'.format(ReplayBuffer[:, 1:]))
+    logging.info('Current new net Q value cache: {}'.format(prune_rate_scheduler.ReplayBuffer[:, 0]))
+    logging.info('Current prune probability distribution cache: {}'.format(prune_rate_scheduler.ReplayBuffer[:, 1:]))
     logging.info(f'Net {best_net_index} is the best new net')
     return best_generated_net
 
@@ -306,7 +303,7 @@ if __name__ == '__main__':
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='compress')
     
     # reinitialize random seed
-    torch_set_seed(start_time)
+    torch_set_random_seed(start_time)
     logging.info('Start with random seed: {}'.format(start_time))
 
     # process input arguments
@@ -325,7 +322,6 @@ if __name__ == '__main__':
     generate_num = settings.MAX_GENERATE_NUM
     dev_num = settings.DEV_NUM
     dev_pretrain_num = settings.DEV_PRETRAIN_NUM
-    strategy = "prune"
 
     # initialize compress milestone
     tolerance_times = settings.MAX_TOLERANCE_TIMES
@@ -350,7 +346,6 @@ if __name__ == '__main__':
     optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
     iter_per_epoch = len(training_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
-    prune_rate_scheduler = PR_scheduler(settings.MAX_PRUNE_NUM)
 
     # initialize reinforcement learning parameter
     prune_distribution = torch.zeros(net.prune_choices_num)
@@ -362,36 +357,28 @@ if __name__ == '__main__':
             layer = net.linear_layers[layer_idx]
             prune_distribution[idx] = layer.out_features
     prune_distribution = prune_distribution / torch.sum(prune_distribution)
-
     ReplayBuffer = torch.zeros(generate_num, 1 + net.prune_choices_num) # [:, 0] stores Q(s, a), [:, 1:] stores action a
+    prune_rate_scheduler = PR_scheduler(strategy="weight_sharing", prune_distribution=prune_distribution, ReplayBuffer=ReplayBuffer)
     logging.info(f'Initial prune probability distribution: {prune_distribution}')
 
     
     for epoch in range(1, settings.DYNAMIC_EPOCH + 1):
-        if strategy == "finished":
+        if prune_rate_scheduler.strategy == "finished":
             break
         
         train_network(net, optimizer, training_loader, loss_function, warmup_scheduler, epoch=epoch, dev=False, comment='')
         top1_acc, _ = eval_network(net, test_loader, epoch=epoch, dev=False)
 
-        # dynamic generate architecture
-        if epoch % 5 == 0:
-            if strategy == "prune":
-                prune_architecture(top1_acc)
-            elif strategy == "quantize":
-                quantize_architecture(top1_acc)
-            elif strategy == "finished":
-                break
-            else:
-                raise TypeError("strategy must be 'prune' or 'quantize' or 'finished' ")
-
-        # start to save best performance model after first pruning milestone
-        if tolerance_times < settings.TOLERANCE_MILESTONES[1] and best_acc < top1_acc:
+        if best_acc < top1_acc:
             best_acc = top1_acc
 
             if not os.path.isdir("models"):
                 os.mkdir("models")
             torch.save(net, f'models/{args.net}_{args.dataset}_Compressed_{start_time}.pkl')
+
+        # dynamic generate architecture
+        if epoch % 5 == 0:
+            net, optimizer, prune_rate_scheduler = prune_architecture(net, top1_acc, prune_rate_scheduler)
     
     end_time = int(time.time())
     logging.info(f'Compress process takes {(end_time - start_time) / 60} minutes')
