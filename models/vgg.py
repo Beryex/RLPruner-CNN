@@ -112,7 +112,7 @@ class VGG16(nn.Module):
     def prune_filter_conv(self, 
                    target_layer: int):
         # prune kernel
-        target_kernel = self.conv_layers[target_layer].prune_kernel()
+        target_kernel = self.conv_layers[target_layer].prune_filter()
         if target_kernel is None:
             return
 
@@ -143,7 +143,7 @@ class VGG16(nn.Module):
 
     def prune_filter_linear(self, 
                      target_layer: int):
-        target_neuron = self.linear_layers[target_layer].prune_neuron()
+        target_neuron = self.linear_layers[target_layer].prune_filter()
         if target_neuron is None:
             return
         
@@ -154,8 +154,8 @@ class VGG16(nn.Module):
     
     def weight_sharing_conv(self, 
                       target_layer: int):
-        self.conv_layers[target_layer].quantization_hash_weights()
+        self.conv_layers[target_layer].weight_sharing()
     
     def weight_sharing_linear(self, 
                         target_layer: int):
-        self.linear_layers[target_layer].quantization_hash_weights()
+        self.linear_layers[target_layer].weight_sharing()
