@@ -14,28 +14,35 @@ import torch.multiprocessing as mp
 
 from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
-                   get_dataloader, setup_logging, WarmUpLR, PR_scheduler, torch_set_random_seed)
+                   get_dataloader, setup_logging, WarmUpLR, Prune_agent, torch_set_random_seed)
 
 def prune_architecture(net: nn.Module, 
                        top1_acc: float, 
-                       prune_rate_scheduler: PR_scheduler):
+                       prune_agent: Prune_agent):
     
-    net, model_index = copy.deepcopy(get_optimal_architecture(net, top1_acc, prune_rate_scheduler))
+    net, model_index = copy.deepcopy(get_optimal_architecture(net, top1_acc, prune_agent))
     net = net.to(device)
     optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
-    ret = prune_rate_scheduler.step(model_index)
+    ret = prune_agent.step(model_index)
     if model_index == 1: # means generated architecture is better
         # save the module
         if not os.path.isdir("models"):
             os.mkdir("models")
-        torch.save(net, f'models/{args.net}_{args.dataset}_{prune_rate_scheduler.strategy}_{start_time}.pkl')
+        torch.save(net, f'models/{args.net}_{args.dataset}_{prune_agent.strategy}_{start_time}.pkl')
     
     if ret is None:
-        if prune_rate_scheduler.strategy == "prune_filter":
-            prune_rate_scheduler = PR_scheduler("weight_sharing")
-        else:
-            prune_rate_scheduler = PR_scheduler("finished")
-    return net, optimizer, prune_rate_scheduler
+        if prune_agent.strategy == "prune_filter":
+            prune_agent.change_strategy("weight_sharing", net.prune_choices_num)
+        elif prune_agent.strategy == "weight_sharing":
+            # free all initial weights
+            for idx, layer_idx in enumerate(net.prune_choices):
+                if idx <= net.last_conv_layer_idx:
+                    layer = net.conv_layers[layer_idx]
+                else:
+                    layer = net.linear_layers[layer_idx]
+                layer.free_original_weight
+            prune_agent.change_strategy("finished", -1)
+    return net, optimizer
 
 
 def train_network(target_net: nn.Module, 
@@ -101,7 +108,7 @@ def eval_network(target_net: nn.Module,
 
 def get_optimal_architecture(original_net: nn.Module, 
                              local_top1_accuracy: float, 
-                             prune_rate_scheduler: PR_scheduler):
+                             prune_agent: Prune_agent):
     # initialize all evaluating variables
     top1_accuracy_tensors = torch.zeros(2)
     FLOPs_tensors = torch.zeros(2)
@@ -113,25 +120,25 @@ def get_optimal_architecture(original_net: nn.Module,
     parameter_num_tensors[0] = local_parameter_num
 
     # generate architecture
-    best_new_net = get_best_generated_architecture(original_net, prune_rate_scheduler)
+    best_new_net = get_best_generated_architecture(original_net, prune_agent)
     if best_new_net == None:
-        prune_rate_scheduler.update_prune_distribution(settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
+        prune_agent.update_prune_distribution(settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
         logging.info('All generated architectures are worse than the architecture in caches. Stop fully training on them')
-        logging.info(f'Current prune probability distribution: {prune_rate_scheduler.prune_distribution}')
+        logging.info(f'Current prune probability distribution: {prune_agent.prune_distribution}')
         return original_net, 0
     
-    best_new_net = copy.deepcopy(best_new_net).to(device)
-    dev_lr = lr
-    dev_optimizer = optim.SGD(best_new_net.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
-    dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
+    if prune_agent.strategy == "prune_filter":
+        dev_lr = lr
+        dev_optimizer = optim.SGD(best_new_net.parameters(), lr=dev_lr, momentum=0.9, weight_decay=5e-4)
+        dev_warmup_scheduler = WarmUpLR(dev_optimizer, iter_per_epoch * warm)
 
-    for dev_epoch in range(1, dev_num + 1):
-        if dev_epoch in settings.DYNAMIC_MILESTONES:
-            dev_lr *= lr_decay
-            for param_group in dev_optimizer.param_groups:
-                param_group['lr'] = dev_lr
-        
-        train_network(best_new_net, dev_optimizer, training_loader, loss_function, dev_warmup_scheduler, dev_epoch, dev=True, comment='Training best generated Architecture Epoch')
+        for dev_epoch in range(1, dev_num + 1):
+            if dev_epoch in settings.DYNAMIC_MILESTONES:
+                dev_lr *= lr_decay
+                for param_group in dev_optimizer.param_groups:
+                    param_group['lr'] = dev_lr
+            
+            train_network(best_new_net, dev_optimizer, training_loader, loss_function, dev_warmup_scheduler, dev_epoch, dev=True, comment='Training best generated Architecture Epoch')
 
     top1_acc,_ = eval_network(best_new_net, test_loader, epoch=-1, dev=True)
 
@@ -168,66 +175,63 @@ def get_optimal_architecture(original_net: nn.Module,
     FLOPs_compression_ratio = 1 - optimal_net_FLOPs / original_FLOPs_num
     Para_compression_ratio = 1 - optimal_net_Params / original_para_num
 
-    prune_rate_scheduler.update_prune_distribution(settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
+    prune_agent.update_prune_distribution(settings.STEP_LENGTH, settings.PROBABILITY_LOWER_BOUND, settings.PPO_CLIP)
 
     logging.info(f'Current compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
-    logging.info(f'Current prune probability distribution: {prune_rate_scheduler.prune_distribution}')
+    logging.info(f'Current prune probability distribution: {prune_agent.prune_distribution}')
     
     return optimal_net, optimal_net_index
 
 
 def get_best_generated_architecture(original_net: nn.Module,
-                                    prune_rate_scheduler: PR_scheduler):
+                                    prune_agent: Prune_agent):
     # initialize all evaluating variables
     net_list = []
 
     with tqdm(total=generate_num, desc=f'Generated architectures', unit='model', leave=False) as pbar:
-        Reward_cache = {}
         # Q_value directly equal to Rewards as we initial all Q_value to 0 and only forward 1 time step
         Q_value_1 = torch.zeros(generate_num)
         for model_id_1 in range(generate_num):
             # generate architecture level 1
             generated_net_1 = copy.deepcopy(original_net).to(device)
-            prune_distribution_action_1 = net_class.update_architecture(generated_net_1, prune_rate_scheduler.prune_distribution, prune_rate_scheduler.modification_num, 
-                                                                        prune_rate_scheduler.strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
+            prune_distribution_action_1, prune_counter_1 = net_class.update_architecture(generated_net_1, prune_agent, settings.PROBABILITY_LOWER_BOUND)
             top1_acc_1,_ = eval_network(generated_net_1, test_loader, epoch=-1, dev=True)
 
             Q_value_1[model_id_1] = top1_acc_1
 
-            '''Q_value_2 = torch.zeros(generate_num)
+            Q_value_2 = torch.zeros(generate_num)
             for model_id_2 in range(generate_num):
                 # generate architecture level 2
                 generated_net_2 = copy.deepcopy(generated_net_1).to(device)
-                prune_distribution_action_2 = net_class.update_architecture(generated_net_2, prune_rate_scheduler.prune_distribution, prune_rate_scheduler.modification_num, 
-                                                                            prune_rate_scheduler.strategy, settings.NOISE_VAR, settings.PROBABILITY_LOWER_BOUND)
+                prune_distribution_action_2, prune_counter_2 = net_class.update_architecture(generated_net_2, prune_agent, settings.PROBABILITY_LOWER_BOUND)
                 # use Reward cache to avoid repetition
-                key = torch.round(prune_distribution_action_1 * prune_rate_scheduler.modification_num).int() + torch.round(prune_distribution_action_2 * prune_rate_scheduler.modification_num).int()
+                key = prune_counter_1.int() + prune_counter_2.int()
                 tuple_key = tuple(key.tolist())
-                if tuple_key in Reward_cache:
-                    Q_value_2[model_id_2] = Reward_cache[tuple_key]
+                if tuple_key in prune_agent.Reward_cache:
+                    Q_value_2[model_id_2] = prune_agent.Reward_cache[tuple_key]
                     continue
                 
                 top1_acc_2,_ = eval_network(generated_net_2, test_loader, epoch=-1, dev=True)
                 Q_value_2[model_id_2] = top1_acc_2
                 
-                Reward_cache[tuple_key] = Q_value_2[model_id_2]
+                prune_agent.Reward_cache[tuple_key] = Q_value_2[model_id_2]
 
-            Q_value_1[model_id_1] += settings.DISCOUNT_FACTOR * torch.max(Q_value_2)'''
+            Q_value_1[model_id_1] += settings.DISCOUNT_FACTOR * torch.max(Q_value_2)
 
             pbar.update(1)
             net_list.append(generated_net_1)
 
             # only update cache when acc is higher in cache
-            min_acc, min_idx = torch.min(prune_rate_scheduler.ReplayBuffer[:, 0], dim=0)
+            min_acc, min_idx = torch.min(prune_agent.ReplayBuffer[:, 0], dim=0)
             if Q_value_1[model_id_1] >= min_acc:
-                prune_rate_scheduler.ReplayBuffer[min_idx, 0] = Q_value_1[model_id_1]
-                prune_rate_scheduler.ReplayBuffer[min_idx, 1:] = prune_distribution_action_1
+                prune_agent.ReplayBuffer[min_idx, 0] = Q_value_1[model_id_1]
+                prune_agent.ReplayBuffer[min_idx, 1:] = prune_distribution_action_1
     best_net_index = torch.argmax(Q_value_1)
     best_generated_net = net_list[best_net_index]
 
     logging.info('Generated net Q value List: {}'.format(Q_value_1))
-    logging.info('Current new net Q value cache: {}'.format(prune_rate_scheduler.ReplayBuffer[:, 0]))
-    logging.info('Current prune probability distribution cache: {}'.format(prune_rate_scheduler.ReplayBuffer[:, 1:]))
+    logging.info('Current new net Q value cache: {}'.format(prune_agent.ReplayBuffer[:, 0]))
+    logging.info('Current prune probability distribution cache: {}'.format(prune_agent.ReplayBuffer[:, 1:]))
     logging.info(f'Net {best_net_index} is the best new net')
     return best_generated_net
 
@@ -297,7 +301,7 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = 5
+    start_time = 6
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='compress')
@@ -309,7 +313,7 @@ if __name__ == '__main__':
     # process input arguments
     training_loader, prototyping_loader, test_loader, _, _ = get_dataloader(dataset=args.dataset, batch_size=args.b, num_workers=args.n, pin_memory=True)
     net_class = get_net_class(args.net)
-    net = torch.load('models/vgg16_cifar100_Original_1716174325.pkl').to(device)  # replace it with the model gained by train.py
+    net = torch.load('models/vgg16_cifar100_Original_1716689096.pkl').to(device)  # replace it with the model gained by train.py
     lr = args.lr
     lr_decay = args.lr_decay
     warm = args.warm
@@ -356,29 +360,37 @@ if __name__ == '__main__':
         else:
             layer = net.linear_layers[layer_idx]
             prune_distribution[idx] = layer.out_features
-    prune_distribution = prune_distribution / torch.sum(prune_distribution)
+    filter_num = torch.sum(prune_distribution)
+    prune_distribution = prune_distribution / filter_num
     ReplayBuffer = torch.zeros(generate_num, 1 + net.prune_choices_num) # [:, 0] stores Q(s, a), [:, 1:] stores action a
-    prune_rate_scheduler = PR_scheduler(strategy="weight_sharing", prune_distribution=prune_distribution, ReplayBuffer=ReplayBuffer)
-    logging.info(f'Initial prune probability distribution: {prune_distribution}')
+    prune_agent = Prune_agent(strategy="prune_filter", prune_distribution=prune_distribution, 
+                                        ReplayBuffer=ReplayBuffer, filter_num=filter_num, prune_choices_num=net.prune_choices_num)
+    logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
 
     
     for epoch in range(1, settings.DYNAMIC_EPOCH + 1):
-        if prune_rate_scheduler.strategy == "finished":
-            break
-        
-        train_network(net, optimizer, training_loader, loss_function, warmup_scheduler, epoch=epoch, dev=False, comment='')
-        top1_acc, _ = eval_network(net, test_loader, epoch=epoch, dev=False)
-
-        if best_acc < top1_acc:
-            best_acc = top1_acc
-
+        if prune_agent.strategy == "finished":
             if not os.path.isdir("models"):
                 os.mkdir("models")
             torch.save(net, f'models/{args.net}_{args.dataset}_Compressed_{start_time}.pkl')
+            break
+        elif prune_agent.strategy == "prune_filter":
+            train_network(net, optimizer, training_loader, loss_function, warmup_scheduler, epoch=epoch, dev=False, comment='')
+            top1_acc, _ = eval_network(net, test_loader, epoch=epoch, dev=False)
 
-        # dynamic generate architecture
-        if epoch % 5 == 0:
-            net, optimizer, prune_rate_scheduler = prune_architecture(net, top1_acc, prune_rate_scheduler)
+            if best_acc < top1_acc:
+                best_acc = top1_acc
+
+                if not os.path.isdir("models"):
+                    os.mkdir("models")
+                torch.save(net, f'models/{args.net}_{args.dataset}_{prune_agent.strategy}_{start_time}.pkl')
+
+            if epoch % 5 == 0:
+                net, optimizer = prune_architecture(net, top1_acc, prune_agent)
+        elif prune_agent.strategy == "weight_sharing":
+            top1_acc, _ = eval_network(net, test_loader, epoch=epoch, dev=False)
+            net, optimizer = prune_architecture(net, top1_acc, prune_agent)
+        
     
     end_time = int(time.time())
     logging.info(f'Compress process takes {(end_time - start_time) / 60} minutes')

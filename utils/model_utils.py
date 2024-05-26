@@ -5,6 +5,8 @@ import faiss
 from typing import Optional
 from torch import Tensor
 
+from conf import settings
+
 
 class Custom_Conv2d(nn.Module):
     def __init__(self, 
@@ -48,8 +50,7 @@ class Custom_Conv2d(nn.Module):
         
         # define parameter for weight sharing
         self.weight_indices = None
-        self.weight_cluster = None
-        self.initial_scaling_factor = 2
+        self.original_weight = None
     
     def __repr__(self):
         return f'Custom_Conv2d({self.in_channels}, {self.out_channels}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, bias={False if self.bias is None else True})'
@@ -59,7 +60,7 @@ class Custom_Conv2d(nn.Module):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
-            actual_weight = self.weight_cluster[self.weight_indices].view(self.weight_shape)
+            actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.conv2d(x, actual_weight, self.bias, self.stride, self.padding)
 
@@ -92,25 +93,29 @@ class Custom_Conv2d(nn.Module):
             raise ValueError(f'Conv2d layer in_channels {self.in_channels} and weight dimension {self.weight.shape[1]} mismath')
     
     def weight_sharing(self):
-        original_weights = self.weight.data.clone().view(-1, 1).cuda()
-        num_clusters = min(len(original_weights) // self.initial_scaling_factor, 2048)
+        if self.weight.shape[0] <= 2:
+            return
+        if self.original_weight is not None:
+            original_weights = self.original_weight.data.clone().view(-1, 1).cuda()
+            num_clusters = self.weight.shape[0] // settings.SCALING_FACTOR
+        else:
+            original_weights = self.weight.data.clone().view(-1, 1).cuda()
+            num_clusters = min(len(original_weights) // settings.SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
 
-        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=True, gpu=True)
+        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=False, gpu=True)
         kmeans.train(original_weights.cpu().numpy())
 
         clustered_weights = torch.from_numpy(kmeans.centroids).float().cuda().squeeze()
         labels = torch.from_numpy(kmeans.index.assign(original_weights.cpu().numpy(), k=1)).long().cuda()
 
         if self.weight_indices is None:
-            self.weight = self.weight.detach()
+            self.original_weight = self.weight.detach()
         self.weight_indices = labels
-        self.weight_cluster = torch.nn.Parameter(clustered_weights)
-
-        self.initial_scaling_factor *= 2
+        self.weight = torch.nn.Parameter(clustered_weights)
     
     def free_original_weight(self):
         if self.weight_indices is not None:
-            self.weight = None
+            self.original_weight = None
 
 class Custom_Linear(nn.Module):
     def __init__(self, 
@@ -143,8 +148,7 @@ class Custom_Linear(nn.Module):
 
         # define parameter for weight sharing
         self.weight_indices = None
-        self.weight_cluster = None
-        self.initial_scaling_factor = 2
+        self.original_weight = None
     
     def __repr__(self):
         return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features}, bias={False if self.bias is None else True})'
@@ -154,7 +158,7 @@ class Custom_Linear(nn.Module):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
-            actual_weight = self.weight_cluster[self.weight_indices].view(self.weight_shape)
+            actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.linear(x, actual_weight, self.bias)
     
@@ -189,25 +193,30 @@ class Custom_Linear(nn.Module):
             raise ValueError(f'Linear layer in_channels {self.in_features} and weight dimension {self.weight.shape[1]} mismath')
     
     def weight_sharing(self):
-        original_weights = self.weight.data.clone().view(-1, 1).cuda()
-        num_clusters = min(len(original_weights) // self.initial_scaling_factor, 2048)
+        if self.weight.shape[0] <= 2:
+            return
+        if self.original_weight is not None:
+            original_weights = self.original_weight.data.clone().view(-1, 1).cuda()
+            num_clusters = self.weight.shape[0] // settings.SCALING_FACTOR
+        else:
+            original_weights = self.weight.data.clone().view(-1, 1).cuda()
+            num_clusters = min(len(original_weights) // settings.SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
 
-        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=True, gpu=True)
+        kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=False, gpu=True)
         kmeans.train(original_weights.cpu().numpy())
 
         clustered_weights = torch.from_numpy(kmeans.centroids).float().cuda().squeeze()
         labels = torch.from_numpy(kmeans.index.assign(original_weights.cpu().numpy(), k=1)).long().cuda()
 
         if self.weight_indices is None:
-            self.weight = self.weight.detach()
+            self.original_weight = self.weight.detach()
         self.weight_indices = labels
-        self.weight_cluster = torch.nn.Parameter(clustered_weights)
+        self.weight = torch.nn.Parameter(clustered_weights)
 
-        self.initial_scaling_factor *= 2
     
     def free_original_weight(self):
         if self.weight_indices is not None:
-            self.weight = None
+            self.original_weight = None
 
 def count_custom_conv2d(m: Custom_Conv2d, 
                         x: Tensor, 

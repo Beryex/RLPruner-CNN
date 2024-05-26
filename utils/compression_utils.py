@@ -3,39 +3,75 @@ from torch import Tensor
 
 from conf import settings
 
-class PR_scheduler():
+class Prune_agent():
     def __init__(self, strategy: str,
                  prune_distribution: Tensor,
-                 ReplayBuffer: Tensor):
-        self.prune_distribution = prune_distribution
+                 ReplayBuffer: Tensor, 
+                 filter_num: int,
+                 prune_choices_num: int):
         self.ReplayBuffer = ReplayBuffer
+        self.Reward_cache = {}
         self.tolerance_ct = settings.TOLERANCE_CT
         if strategy == "prune_filter":
             self.strategy = "prune_filter"
-            self.modification_num = settings.PRUNE_FILTER_MAX_NUM
-            self.modification_min_num = settings.PRUNE_FILTER_MIN_NUM
+            self.modification_num = filter_num * settings.PRUNE_FILTER_MAX_RATIO
+            self.modification_min_num = filter_num * settings.PRUNE_FILTER_MIN_RATIO
+            self.prune_distribution = prune_distribution
+            self.noise_var = settings.PRUNE_FILTER_NOISE_VAR
         elif strategy == "weight_sharing":
             self.strategy = "weight_sharing"
-            self.modification_num = settings.WEIGHT_SHARING_MAX_NUM
-            self.modification_min_num = settings.WEIGHT_SHARING_MIN_NUM
+            self.modification_num = prune_choices_num * settings.WEIGHT_SHARING_MAX_RATIO
+            self.modification_min_num = prune_choices_num * settings.WEIGHT_SHARING_MIN_RATIO
+            self.prune_distribution = torch.ones_like(prune_distribution) / prune_distribution.numel()
+            self.noise_var = settings.WEIGHT_SHARING_NOISE_VAR
         elif strategy == "finished":
             self.strategy = "finished"
             self.modification_num = -1
             self.modification_min_num = 0
+            self.prune_distribution = None
+            self.noise_var = 0
         else:
             self.strategy = ""
             self.modification_num = -1
             self.modification_min_num = 0
-            print("ERROR: Invalid strategy input!")
+            self.prune_distribution = None
+            self.noise_var = 0
+            raise TypeError(f"Invalid strategy input {strategy}")
 
-    def step(self, model_index: int):
+    def change_strategy(self, 
+                     strategy: str, 
+                     prune_choices_num: int):
+        if self.strategy == "prune_filter" and strategy == "weight_sharing":
+            self.strategy = "weight_sharing"
+            self.modification_num = prune_choices_num * settings.WEIGHT_SHARING_MAX_RATIO
+            self.modification_min_num = prune_choices_num * settings.WEIGHT_SHARING_MIN_RATIO
+            self.prune_distribution = torch.ones_like(self.prune_distribution) / self.prune_distribution.numel()
+            self.noise_var = settings.WEIGHT_SHARING_NOISE_VAR
+        elif self.strategy == "weight_sharing" and strategy == "finished":
+            self.strategy = "finished"
+            self.modification_num = -1
+            self.modification_min_num = 0
+            self.prune_distribution = None
+            self.noise_var = 0
+        else:
+            self.strategy = ""
+            self.modification_num = -1
+            self.modification_min_num = 0
+            self.prune_distribution = None
+            self.noise_var = 0
+            raise TypeError(f"Unsupport strategy change from {self.strategy} to {strategy}")
+
+
+    def step(self, 
+             model_index: int):
         if model_index == 0:
             # means original net is better
             self.tolerance_ct -= 1
         else:
-            # means generated net is better, reset counter and clear the ReplayBuffer
+            # means generated net is better, reset counter then clear the ReplayBuffer and Reward_cache
             self.tolerance_ct = settings.TOLERANCE_CT
             self.ReplayBuffer.zero_()
+            self.Reward_cache = {}
         if self.tolerance_ct <= 0:
             self.modification_num //= 2
             self.tolerance_ct = settings.TOLERANCE_CT

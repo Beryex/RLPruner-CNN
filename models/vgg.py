@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-from utils import Custom_Conv2d, Custom_Linear
+from utils import Custom_Conv2d, Custom_Linear, Prune_agent
 
 class VGG16(nn.Module):
     def __init__(self, 
@@ -79,21 +79,19 @@ class VGG16(nn.Module):
 
 
     def update_architecture(self, 
-                            prune_distribution: Tensor, 
-                            modification_num: int, strategy: str, 
-                            noise_var: float = 0.01, 
+                            prune_agent: Prune_agent,
                             probability_lower_bound: float = 0.005):
         prune_counter = torch.zeros(self.prune_choices_num)
-        noise = torch.randn(self.prune_choices_num) * noise_var
-        noised_distribution = prune_distribution + noise
+        noise = torch.randn(self.prune_choices_num) * prune_agent.noise_var
+        noised_distribution = prune_agent.prune_distribution + noise
         noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)
-        prune_counter = torch.round(noised_distribution * modification_num)
+        prune_counter = torch.round(noised_distribution * prune_agent.modification_num)
         
         conv_action, linear_action = {
             'prune_filter': (self.prune_filter_conv, self.prune_filter_linear),
             'weight_sharing': (self.weight_sharing_conv, self.weight_sharing_linear)
-        }.get(strategy, (None, None))
+        }.get(prune_agent.strategy, (None, None))
 
         if conv_action and linear_action:
             for target_layer_idx, count in enumerate(prune_counter):
@@ -106,7 +104,7 @@ class VGG16(nn.Module):
         else:
             raise ValueError('Invalid strategy provided')
         
-        return noised_distribution
+        return noised_distribution, prune_counter
 
 
     def prune_filter_conv(self, 

@@ -48,7 +48,7 @@ def test():
     correct_1 = 0.0
     correct_5 = 0.0
 
-    net = torch.load('models/vgg16_cifar100_Original_1716174325.pkl').to(device)
+    net = torch.load('models/vgg16_cifar100_Original_1716689096.pkl').to(device)
     net.eval()
     with torch.no_grad():
         for (images, labels) in tqdm(test_loader, total=len(test_loader), desc='Testing round', unit='batch', leave=False):
@@ -70,9 +70,7 @@ def test():
     correct_1 = 0.0
     correct_5 = 0.0
 
-    compressed_net = torch.load('models/vgg16_cifar100_Original_1716174325.pkl').to(device)
-    compressed_net.linear_layers[0].weight_sharing()
-    compressed_net.linear_layers[0].weight_sharing()
+    compressed_net = torch.load('models/vgg16_cifar100_Original_1716689096.pkl').to(device)
     compressed_net.eval()
     with torch.no_grad():
         for (images, labels) in tqdm(test_loader, total=len(test_loader), desc='Testing round', unit='batch', leave=False):
