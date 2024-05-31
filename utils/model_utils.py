@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import faiss
 from typing import Optional
 from torch import Tensor
+import warnings
 
 from conf import settings
 
@@ -60,7 +61,8 @@ class Custom_Conv2d(nn.Module):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
-            actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
+            decompressed_weight_indices = self.weight_indices.to(torch.int32)
+            actual_weight = self.weight[decompressed_weight_indices].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.conv2d(x, actual_weight, self.bias, self.stride, self.padding)
 
@@ -70,8 +72,9 @@ class Custom_Conv2d(nn.Module):
             # weight is still normal, not cluster
             if self.out_channels - 1 == 0:
                 return None
-            weight_variances = torch.var(self.weight.data, dim = [1, 2, 3])
-            target_kernel = torch.argmin(weight_variances).item()
+            # weight_variances = torch.var(self.weight.data, dim = [1, 2, 3])
+            weight_L2norm = torch.norm(self.weight.data, p=2, dim= [1, 2, 3])
+            target_kernel = torch.argmin(weight_L2norm).item()
             with torch.no_grad():
                 self.weight.data = torch.cat([self.weight.data[:target_kernel], self.weight.data[target_kernel+1:]], dim=0)
                 if self.bias is not None:
@@ -97,10 +100,10 @@ class Custom_Conv2d(nn.Module):
             return
         if self.original_weight is not None:
             original_weights = self.original_weight.data.clone().view(-1, 1).cuda()
-            num_clusters = self.weight.shape[0] // settings.SCALING_FACTOR
+            num_clusters = self.weight.shape[0] // settings.WEIGHT_SHARING_SCALING_FACTOR
         else:
             original_weights = self.weight.data.clone().view(-1, 1).cuda()
-            num_clusters = min(len(original_weights) // settings.SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
+            num_clusters = min(len(original_weights) // settings.WEIGHT_SHARING_SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
 
         kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=False, gpu=True)
         kmeans.train(original_weights.cpu().numpy())
@@ -110,8 +113,12 @@ class Custom_Conv2d(nn.Module):
 
         if self.weight_indices is None:
             self.original_weight = self.weight.detach()
-        self.weight_indices = labels
-        self.weight = torch.nn.Parameter(clustered_weights)
+        if num_clusters <= 256:
+            labels = labels.to(torch.uint8)
+        else:
+            labels = labels.to(torch.int32)
+        self.weight_indices = labels.view(-1)
+        self.weight = nn.Parameter(clustered_weights)
     
     def free_original_weight(self):
         if self.weight_indices is not None:
@@ -158,7 +165,8 @@ class Custom_Linear(nn.Module):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
-            actual_weight = self.weight[self.weight_indices].view(self.weight_shape)
+            decompressed_weight_indices = self.weight_indices.to(torch.int32)
+            actual_weight = self.weight[decompressed_weight_indices].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.linear(x, actual_weight, self.bias)
     
@@ -168,8 +176,9 @@ class Custom_Linear(nn.Module):
             # weight is still normal, not cluster
             if self.out_features - 1 == 0:
                 return None
-            weight_variances = torch.var(self.weight.data, dim = 1)
-            target_neuron = torch.argmin(weight_variances).item()
+            # weight_variances = torch.var(self.weight.data, dim = 1)
+            weight_L2norm = torch.norm(self.weight.data, p=2, dim=1)
+            target_neuron = torch.argmin(weight_L2norm).item()
             with torch.no_grad():
                 self.weight.data = torch.cat([self.weight.data[:target_neuron], self.weight.data[target_neuron+1:]], dim=0)
                 if self.bias is not None:
@@ -197,11 +206,11 @@ class Custom_Linear(nn.Module):
             return
         if self.original_weight is not None:
             original_weights = self.original_weight.data.clone().view(-1, 1).cuda()
-            num_clusters = self.weight.shape[0] // settings.SCALING_FACTOR
+            num_clusters = self.weight.shape[0] // settings.WEIGHT_SHARING_SCALING_FACTOR
         else:
             original_weights = self.weight.data.clone().view(-1, 1).cuda()
-            num_clusters = min(len(original_weights) // settings.SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
-
+            num_clusters = min(len(original_weights) // settings.WEIGHT_SHARING_SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
+        
         kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=False, gpu=True)
         kmeans.train(original_weights.cpu().numpy())
 
@@ -210,13 +219,17 @@ class Custom_Linear(nn.Module):
 
         if self.weight_indices is None:
             self.original_weight = self.weight.detach()
-        self.weight_indices = labels
-        self.weight = torch.nn.Parameter(clustered_weights)
-
+        if num_clusters <= 256:
+            labels = labels.to(torch.uint8)
+        else:
+            labels = labels.to(torch.int32) # as max number is 2048
+        self.weight_indices = labels.view(-1)
+        self.weight = nn.Parameter(clustered_weights)
     
     def free_original_weight(self):
         if self.weight_indices is not None:
             self.original_weight = None
+
 
 def count_custom_conv2d(m: Custom_Conv2d, 
                         x: Tensor, 

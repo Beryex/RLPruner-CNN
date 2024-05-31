@@ -70,10 +70,10 @@ class Prune_agent():
         else:
             # means generated net is better, reset counter then clear the ReplayBuffer and Reward_cache
             self.tolerance_ct = settings.TOLERANCE_CT
-            self.ReplayBuffer.zero_()
+            self.ReplayBuffer = torch.tensor([])
             self.Reward_cache = {}
         if self.tolerance_ct <= 0:
-            self.modification_num //= 2
+            self.modification_num = int(self.modification_num * settings.PR_DECAY)
             self.tolerance_ct = settings.TOLERANCE_CT
         if self.modification_num < self.modification_min_num:
             return None
@@ -95,10 +95,11 @@ class Prune_agent():
         negative_distribution = torch.sum(negative_samples[:, 1:] * negative_weight.unsqueeze(1), dim=0)
         updated_prune_distribution = prune_distribution + (step_length * (positive_distribution - prune_distribution) 
                                                         - step_length * (negative_distribution - prune_distribution))
+        updated_prune_distribution = torch.clamp(updated_prune_distribution, min=probability_lower_bound)
+        updated_prune_distribution /= torch.sum(updated_prune_distribution)
         
         ratio = updated_prune_distribution / prune_distribution
-        clipped_ratio = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip)
-        updated_prune_distribution = prune_distribution * clipped_ratio
+        updated_prune_distribution = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip) * prune_distribution
         updated_prune_distribution = torch.clamp(updated_prune_distribution, min=probability_lower_bound)
         updated_prune_distribution /= torch.sum(updated_prune_distribution)
         self.prune_distribution = updated_prune_distribution

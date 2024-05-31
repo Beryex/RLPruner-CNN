@@ -12,10 +12,11 @@ from conf import settings
 from utils import get_network, get_dataloader, setup_logging, WarmUpLR, torch_set_random_seed
 
 
-def train(epoch: int):
+def train_network(epoch: int):
     net.train()
-    with tqdm(total=len(training_loader), desc=f'Epoch {epoch}/{settings.ORIGINAL_EPOCH}', unit='batch') as pbar:
-        for _, (images, labels) in enumerate(training_loader):
+    train_loss = 0.0
+    with tqdm(total=len(train_loader), desc=f'Epoch {epoch}/{settings.ORIGINAL_EPOCH}', unit='batch') as pbar:
+        for _, (images, labels) in enumerate(train_loader):
             images = images.to(device)
             labels = labels.to(device)
 
@@ -24,42 +25,50 @@ def train(epoch: int):
             loss = loss_function(outputs, labels)
             loss.backward()
             optimizer.step()
+            train_loss += loss.item()
 
             if epoch <= warm:
                 warmup_scheduler.step()
 
             pbar.update(1)
             pbar.set_postfix(**{'loss (batch)': loss.item()})
+        train_loss /= len(train_loader)
+        pbar.set_postfix(**{'loss (batch)': train_loss})
+    return train_loss
 
 @torch.no_grad()
-def eval_training(epoch: int):
+def eval_network(target_eval_loader: torch.utils.data.DataLoader, 
+                 epoch: int):
     net.eval()
     correct_1 = 0.0
     correct_5 = 0.0
-    for (images, labels) in tqdm(test_loader, total=len(test_loader), desc='Testing round', unit='batch', leave=False):
+    eval_loss = 0.0
+    for (images, labels) in tqdm(target_eval_loader, total=len(target_eval_loader), desc='Testing round', unit='batch', leave=False):
         images = images.to(device)
         labels = labels.to(device)
         
         outputs = net(images)
+        eval_loss += loss_function(outputs, labels).item()
         _, preds = outputs.topk(5, 1, largest=True, sorted=True)
         correct_1 += (preds[:, :1] == labels.unsqueeze(1)).sum().item()
         top5_correct = labels.view(-1, 1).expand_as(preds) == preds
         correct_5 += top5_correct.any(dim=1).sum().item()
     
-    top1_acc = correct_1 / len(test_loader.dataset)
-    top5_acc = correct_5 / len(test_loader.dataset)
-    logging.info(f'Epoch: {epoch}, Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}')
-    return top1_acc, top5_acc
+    top1_acc = correct_1 / len(target_eval_loader.dataset)
+    top5_acc = correct_5 / len(target_eval_loader.dataset)
+    eval_loss /= len(target_eval_loader)
+    return top1_acc, top5_acc, eval_loss
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='train given model under given dataset')
     parser.add_argument('-net', type=str, default=None, help='the type of model to train')
     parser.add_argument('-dataset', type=str, default=None, help='the dataset to train on')
-    parser.add_argument('-lr', type=float, default=settings.INITIAL_LR, help='initial learning rate')
+    parser.add_argument('-lr', type=float, default=settings.LR_SCHEDULAR_INITIAL_LR, help='initial learning rate')
     parser.add_argument('-lr_decay', type=float, default=settings.LR_DECAY, help='learning rate decay rate')
     parser.add_argument('-b', type=int, default=settings.BATCH_SIZE, help='batch size for dataloader')
     parser.add_argument('-warm', type=int, default=settings.WARM, help='warm up training phase')
+    parser.add_argument('-n', type=int, default=settings.NUM_WORKERS, help='num_workers for dataloader')
 
     args = parser.parse_args()
     check_args(args)
@@ -82,7 +91,7 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = int(time.time())
+    start_time = 102
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='train')
@@ -92,37 +101,42 @@ if __name__ == '__main__':
     logging.info(f'Start with random seed: {start_time}')
     
     # process input arguments
-    training_loader, _, test_loader, in_channels, num_class = get_dataloader(dataset=args.dataset, batch_size=args.b)
+    train_loader, _, test_loader, in_channels, num_class = get_dataloader(dataset=args.dataset, batch_size=args.b, num_workers=args.n, pin_memory=True)
     net = get_network(net=args.net, in_channels=in_channels, num_class=num_class).to(device)
-    lr = args.lr
     gamma = args.lr_decay
     warm = args.warm
 
     # set experiment parameter
-    current_lr = lr
     best_acc = 0.0
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=current_lr, momentum=0.9, weight_decay=5e-4)
-    iter_per_epoch = len(training_loader)
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_decay, threshold=settings.LR_SCHEDULAR_THRESHOLD, 
+                                                        patience=settings.LR_SCHEDULAR_PATIENCE, threshold_mode='abs', min_lr=settings.LR_SCHEDULAR_MIN_LR, verbose=True)
+    iter_per_epoch = len(train_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
 
     for epoch in range(1, settings.ORIGINAL_EPOCH + 1):
-        if epoch in settings.ORIGINAL_MILESTONES:
-            current_lr *= gamma
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = current_lr
+        for param_group in optimizer.param_groups:
+            current_lr = param_group['lr']
+        # stop when reaches the minimum learning rate
+        if epoch > warm and current_lr <= settings.LR_SCHEDULAR_MIN_LR:
+            break
 
-        train(epoch)
-        top1_acc, _ = eval_training(epoch)
+        train_loss = train_network(epoch)
+        top1_acc, top5_acc, _ = eval_network(test_loader, epoch)
+        logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}')
+
+        lr_scheduler.step(train_loss)
+
 
         # start to save best performance model after first training milestone
-        if epoch > settings.ORIGINAL_MILESTONES[1] and best_acc < top1_acc:
+        if best_acc < top1_acc:
             best_acc = top1_acc
 
             if not os.path.isdir("models"):
                 os.mkdir("models")
-            torch.save(net, f'models/{args.net}_{args.dataset}_Original_{start_time}.pkl')
+            torch.save(net, f'models/{args.net}_{args.dataset}_Original_{start_time}.pth')
     
     end_time = time.time()
     logging.info(f'Original training process takes {(end_time - start_time) / 60} minutes')

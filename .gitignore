@@ -1,4 +1,5 @@
 *.pkl
+*.pth
 *.txt
 **/__pycache__/
 **/data/
