@@ -91,7 +91,7 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = 102
+    start_time = 101
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = get_args()
     setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='train')
@@ -111,8 +111,9 @@ if __name__ == '__main__':
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_decay, threshold=settings.LR_SCHEDULAR_THRESHOLD, 
-                                                        patience=settings.LR_SCHEDULAR_PATIENCE, threshold_mode='abs', min_lr=settings.LR_SCHEDULAR_MIN_LR, verbose=True)
+    '''lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=args.lr_decay, threshold=settings.LR_SCHEDULAR_THRESHOLD, 
+                                                        patience=settings.LR_SCHEDULAR_PATIENCE, threshold_mode='abs', min_lr=settings.LR_SCHEDULAR_MIN_LR, verbose=True)'''
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, settings.ORIGINAL_EPOCH, eta_min=1e-8,last_epoch=-1)
     iter_per_epoch = len(train_loader)
     warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * warm)
 
@@ -127,7 +128,7 @@ if __name__ == '__main__':
         top1_acc, top5_acc, _ = eval_network(test_loader, epoch)
         logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}')
 
-        lr_scheduler.step(train_loss)
+        lr_scheduler.step()
 
 
         # start to save best performance model after first training milestone

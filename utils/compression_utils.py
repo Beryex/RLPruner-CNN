@@ -12,6 +12,7 @@ class Prune_agent():
         self.ReplayBuffer = ReplayBuffer
         self.Reward_cache = {}
         self.tolerance_ct = settings.TOLERANCE_CT
+        self.initial_prune_distribution = prune_distribution
         if strategy == "prune_filter":
             self.strategy = "prune_filter"
             self.modification_num = filter_num * settings.PRUNE_FILTER_MAX_RATIO
@@ -70,11 +71,13 @@ class Prune_agent():
         else:
             # means generated net is better, reset counter then clear the ReplayBuffer and Reward_cache
             self.tolerance_ct = settings.TOLERANCE_CT
-            self.ReplayBuffer = torch.tensor([])
+            self.ReplayBuffer.zero_()
             self.Reward_cache = {}
         if self.tolerance_ct <= 0:
             self.modification_num = int(self.modification_num * settings.PR_DECAY)
             self.tolerance_ct = settings.TOLERANCE_CT
+            self.ReplayBuffer.zero_()
+            self.Reward_cache = {}
         if self.modification_num < self.modification_min_num:
             return None
         else:
@@ -84,17 +87,13 @@ class Prune_agent():
         ReplayBuffer = self.ReplayBuffer
         prune_distribution = self.prune_distribution
         top1_accuracy_cache = ReplayBuffer[:, 0]
-        _, indices = torch.sort(top1_accuracy_cache, dim=0, descending=False)
-        mid_idx = top1_accuracy_cache.shape[0] // 2
-        negative_samples = ReplayBuffer[indices[:mid_idx]]
-        positive_samples = ReplayBuffer[indices[mid_idx:]]
+        positive_distribution_weight = (top1_accuracy_cache - torch.min(top1_accuracy_cache)) / torch.sum(top1_accuracy_cache - torch.min(top1_accuracy_cache))
+        positive_weighted_distribution = torch.sum(ReplayBuffer[:, 1:] * positive_distribution_weight.unsqueeze(1), dim=0)
+        negative_distribution_weight = (top1_accuracy_cache - torch.max(top1_accuracy_cache)) / torch.sum(top1_accuracy_cache - torch.max(top1_accuracy_cache))
+        negative_weighted_distribution = torch.sum(ReplayBuffer[:, 1:] * negative_distribution_weight.unsqueeze(1), dim=0)
         
-        positive_weight = positive_samples[:, 0] / torch.sum(positive_samples[:, 0], dim=0, keepdim=True)
-        positive_distribution = torch.sum(positive_samples[:, 1:] * positive_weight.unsqueeze(1), dim=0)
-        negative_weight = (negative_samples[:, 0] - 1) / torch.sum(negative_samples[:, 0] - 1, dim=0, keepdim=True)
-        negative_distribution = torch.sum(negative_samples[:, 1:] * negative_weight.unsqueeze(1), dim=0)
-        updated_prune_distribution = prune_distribution + (step_length * (positive_distribution - prune_distribution) 
-                                                        - step_length * (negative_distribution - prune_distribution))
+        updated_prune_distribution = prune_distribution + step_length * (positive_weighted_distribution - prune_distribution) 
+                                                           #- step_length * (negative_weighted_distribution - prune_distribution))
         updated_prune_distribution = torch.clamp(updated_prune_distribution, min=probability_lower_bound)
         updated_prune_distribution /= torch.sum(updated_prune_distribution)
         

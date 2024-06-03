@@ -61,20 +61,19 @@ class Custom_Conv2d(nn.Module):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
-            decompressed_weight_indices = self.weight_indices.to(torch.int32)
-            actual_weight = self.weight[decompressed_weight_indices].view(self.weight_shape)
+            unpacked_tensor = self.weight_indices.unpack_tensors()
+            actual_weight = self.weight[unpacked_tensor].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.conv2d(x, actual_weight, self.bias, self.stride, self.padding)
-
 
     def prune_filter(self):
         if self.weight_indices is None:
             # weight is still normal, not cluster
             if self.out_channels - 1 == 0:
                 return None
-            # weight_variances = torch.var(self.weight.data, dim = [1, 2, 3])
-            weight_L2norm = torch.norm(self.weight.data, p=2, dim= [1, 2, 3])
-            target_kernel = torch.argmin(weight_L2norm).item()
+            weight_variances = torch.var(self.weight.data, dim = [1, 2, 3])
+            # weight_L2norm = torch.norm(self.weight.data, p=2, dim= [1, 2, 3])
+            target_kernel = torch.argmin(weight_variances).item()
             with torch.no_grad():
                 self.weight.data = torch.cat([self.weight.data[:target_kernel], self.weight.data[target_kernel+1:]], dim=0)
                 if self.bias is not None:
@@ -117,7 +116,8 @@ class Custom_Conv2d(nn.Module):
             labels = labels.to(torch.uint8)
         else:
             labels = labels.to(torch.int32)
-        self.weight_indices = labels.view(-1)
+        self.weight_indices = packable_tensors(target_tensor=labels.view(-1).to(torch.int32), num_clusters=num_clusters)
+        self.weight_indices.pack_tensors()
         self.weight = nn.Parameter(clustered_weights)
     
     def free_original_weight(self):
@@ -165,8 +165,8 @@ class Custom_Linear(nn.Module):
         if self.weight_indices is None:
             actual_weight = self.weight
         else:
-            decompressed_weight_indices = self.weight_indices.to(torch.int32)
-            actual_weight = self.weight[decompressed_weight_indices].view(self.weight_shape)
+            unpacked_tensor = self.weight_indices.unpack_tensors()
+            actual_weight = self.weight[unpacked_tensor].view(self.weight_shape)
         actual_weight = actual_weight.to(x.device)
         return F.linear(x, actual_weight, self.bias)
     
@@ -176,9 +176,9 @@ class Custom_Linear(nn.Module):
             # weight is still normal, not cluster
             if self.out_features - 1 == 0:
                 return None
-            # weight_variances = torch.var(self.weight.data, dim = 1)
-            weight_L2norm = torch.norm(self.weight.data, p=2, dim=1)
-            target_neuron = torch.argmin(weight_L2norm).item()
+            weight_variances = torch.var(self.weight.data, dim = 1)
+            # weight_L2norm = torch.norm(self.weight.data, p=2, dim=1)
+            target_neuron = torch.argmin(weight_variances).item()
             with torch.no_grad():
                 self.weight.data = torch.cat([self.weight.data[:target_neuron], self.weight.data[target_neuron+1:]], dim=0)
                 if self.bias is not None:
@@ -219,16 +219,80 @@ class Custom_Linear(nn.Module):
 
         if self.weight_indices is None:
             self.original_weight = self.weight.detach()
-        if num_clusters <= 256:
-            labels = labels.to(torch.uint8)
-        else:
-            labels = labels.to(torch.int32) # as max number is 2048
-        self.weight_indices = labels.view(-1)
+        self.weight_indices = packable_tensors(target_tensor=labels.view(-1).to(torch.int32), num_clusters=num_clusters)
+        self.weight_indices.pack_tensors()
         self.weight = nn.Parameter(clustered_weights)
     
     def free_original_weight(self):
         if self.weight_indices is not None:
             self.original_weight = None
+
+
+class packable_tensors():
+    def __init__(self, target_tensor: Tensor, num_clusters: int):
+        self.target_tensor = target_tensor
+        self.num_clusters = num_clusters
+        self.original_dim = target_tensor.shape[0]
+
+    def pack_tensors(self):
+        input_tensor = self.target_tensor
+        num_clusters = self.num_clusters
+        if input_tensor.dtype != torch.int32 and input_tensor.dtype != torch.int64:
+            raise TypeError(f"Unexpected input tensor dtype: {input_tensor.dtype} for packing tensor")
+        # note that max value of num_clusters is 2048, which is limited by faiss k-means method
+        if num_clusters <= 2 ** 11 and num_clusters > 2 ** 8:
+            packed_tensors = input_tensor.to(torch.int16)
+        elif num_clusters <= 2 ** 8 and num_clusters > 2 ** 4:
+            input_tensor_original_dim = input_tensor.shape[0]
+            packed_tensors_dim = input_tensor_original_dim // 2 + (1 if input_tensor_original_dim % 2 != 0 else 0)
+            packed_tensors = torch.zeros(packed_tensors_dim, dtype=torch.int16)
+            for i in range(0, input_tensor_original_dim - 1, 2):
+                packed_tensors[i // 2] = ((input_tensor[i] & 0xFF) << 8) | (input_tensor[i+1] & 0xFF)
+            if input_tensor_original_dim % 2 != 0:
+                packed_tensors[-1] = (input_tensor[-1] & 0xFF) << 8
+        elif num_clusters <= 2 ** 4:
+            input_tensor_original_dim = input_tensor.shape[0]
+            packed_tensors_dim = input_tensor_original_dim // 2 + (1 if input_tensor_original_dim % 2 != 0 else 0)
+            packed_tensors = torch.zeros(packed_tensors_dim, dtype=torch.int8)
+            for i in range(0, input_tensor_original_dim - 1, 2):
+                packed_tensors[i // 2] = ((input_tensor[i] & 0x0F) << 4) | (input_tensor[i+1] & 0x0F)
+            if input_tensor_original_dim % 2 != 0:
+                packed_tensors[-1] = (input_tensor[-1] & 0x0F) << 4
+        self.target_tensor = packed_tensors
+
+    def unpack_tensors(self):
+        input_tensor = self.target_tensor
+        num_clusters = self.num_clusters
+        original_dim = self.original_dim
+        # note that max value of num_clusters is 2048, which is limited by faiss k-means method
+        # target dtype is int32 as in forward the indexing only support int32 and does NOT support int16 or int8
+        if num_clusters <= 2 ** 11 and num_clusters > 2 ** 8:
+            unpacked_tensors = input_tensor.to(torch.int32)
+        elif num_clusters <= 2 ** 8 and num_clusters > 2 ** 4:
+            if input_tensor.dtype != torch.int16:
+                raise TypeError(f"Unexpected input tensor dtype: {input_tensor.dtype} given {num_clusters} clusters number")
+            unpacked_tensors = torch.zeros(original_dim, dtype=torch.int32)
+            for i in range(0, input_tensor.shape[0] - 1):
+                unpacked_tensors[2 * i] = (input_tensor[i] & 0xFF00) >> 8
+                unpacked_tensors[2 * i + 1] = (input_tensor[i] & 0xFF)
+            if original_dim % 2 == 0:
+                unpacked_tensors[-1] = (input_tensor[-1] & 0xFF00) >> 8
+            else:
+                unpacked_tensors[-2] = (input_tensor[-1] & 0xFF00) >> 8
+                unpacked_tensors[-1] = (input_tensor[-1] & 0xFF)
+        elif num_clusters <= 2 ** 4:
+            if input_tensor.dtype != torch.int8 and input_tensor.dtype != torch.uint8:
+                raise TypeError(f"Unexpected input tensor dtype: {input_tensor.dtype} given {num_clusters} clusters number")
+            unpacked_tensors = torch.zeros(original_dim, dtype=torch.int32)
+            for i in range(0, input_tensor.shape[0] - 1):
+                unpacked_tensors[2 * i] = (input_tensor[i] & 0xF0) >> 4
+                unpacked_tensors[2 * i + 1] = (input_tensor[i] & 0x0F)
+            if original_dim % 2 == 0:
+                unpacked_tensors[-1] = (input_tensor[-1] & 0xF0) >> 4
+            else:
+                unpacked_tensors[-2] = (input_tensor[-1] & 0xF0) >> 4
+                unpacked_tensors[-1] = (input_tensor[-1] & 0x0F)
+        return unpacked_tensors
 
 
 def count_custom_conv2d(m: Custom_Conv2d, 
