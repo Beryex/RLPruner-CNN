@@ -3,4 +3,4 @@
 *.txt
 **/__pycache__/
 **/data/
-/wandb/
+**/wandb/
