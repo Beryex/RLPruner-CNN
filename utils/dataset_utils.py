@@ -6,10 +6,10 @@ from conf import settings
 
 
 def get_dataloader(dataset: str, 
-                   batch_size: int = 128, 
-                   num_workers: int = 4, 
+                   batch_size: int = settings.T_BATCH_SIZE, 
+                   num_workers: int = settings.T_NUM_WORKERS, 
                    shuffle: bool =True, 
-                   val_proportion: float = settings.VAL_PROPORTION,
+                   val_proportion: float = settings.D_VAL_PROPORTION,
                    pin_memory: bool = False):
     if dataset == 'mnist':
         in_channels = 1
@@ -19,12 +19,12 @@ def get_dataloader(dataset: str,
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(15),
             transforms.ToTensor(),
-            transforms.Normalize(settings.MNIST_TRAIN_MEAN, settings.MNIST_TRAIN_STD)
+            transforms.Normalize(settings.D_MNIST_TRAIN_MEAN, settings.D_MNIST_TRAIN_STD)
         ])
         transform_test = transforms.Compose([
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
-            transforms.Normalize(settings.MNIST_TRAIN_MEAN, settings.MNIST_TRAIN_STD)
+            transforms.Normalize(settings.D_MNIST_TRAIN_MEAN, settings.D_MNIST_TRAIN_STD)
         ])
 
         mnist_train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform_train)
@@ -49,11 +49,11 @@ def get_dataloader(dataset: str,
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(15),
             transforms.ToTensor(),
-            transforms.Normalize(settings.CIFAR10_TRAIN_MEAN, settings.CIFAR10_TRAIN_STD)
+            transforms.Normalize(settings.D_CIFAR10_TRAIN_MEAN, settings.D_CIFAR10_TRAIN_STD)
         ])
         transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(settings.CIFAR10_TRAIN_MEAN, settings.CIFAR10_TRAIN_STD)
+            transforms.Normalize(settings.D_CIFAR10_TRAIN_MEAN, settings.D_CIFAR10_TRAIN_STD)
         ])
 
         cifar10_train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
@@ -78,11 +78,11 @@ def get_dataloader(dataset: str,
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(15),
             transforms.ToTensor(),
-            transforms.Normalize(settings.CIFAR100_TRAIN_MEAN, settings.CIFAR100_TRAIN_STD)
+            transforms.Normalize(settings.D_CIFAR100_TRAIN_MEAN, settings.D_CIFAR100_TRAIN_STD)
         ])
         transform_test = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(settings.CIFAR100_TRAIN_MEAN, settings.CIFAR100_TRAIN_STD)
+            transforms.Normalize(settings.D_CIFAR100_TRAIN_MEAN, settings.D_CIFAR100_TRAIN_STD)
         ])
 
         cifar100_train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)

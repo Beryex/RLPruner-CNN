@@ -1,0 +1,1 @@
+{"compress_epoch": 6, "top1_acc": 0.7248, "modification_num": 814, "FLOPs_compression_ratio": 0.36886054277420044, "Para_compression_ratio": 0.420477032661438, "_timestamp": 1717908502.0599186, "_runtime": 3321.795665740967, "_step": 5}

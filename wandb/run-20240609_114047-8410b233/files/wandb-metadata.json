@@ -1,0 +1,58 @@
+{
+    "os": "Windows-10-10.0.19045-SP0",
+    "python": "3.9.18",
+    "heartbeatAt": "2024-06-09T03:40:49.192652",
+    "startedAt": "2024-06-09T03:40:47.691211",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "-net",
+        "vgg16",
+        "-dataset",
+        "cifar100"
+    ],
+    "state": "running",
+    "program": "A:\\ECE397\\compress.py",
+    "codePathLocal": "compress.py",
+    "codePath": "compress.py",
+    "git": {
+        "remote": "https://github.com/Beryex/UIUC-ECE397.git",
+        "commit": "e0f1c36fbcb7578987b2fa30ff701eea86708f6d"
+    },
+    "email": "WangBoyao.02@outlook.com",
+    "root": "A:/ECE397",
+    "host": "\u80af\u5854\u57fa\u6ce2\u65c1\u5a01\u58eb\u5fcc",
+    "username": "A",
+    "executable": "C:\\Users\\A\\anaconda3\\envs\\Pytorch\\python.exe",
+    "cpu_count": 24,
+    "cpu_count_logical": 32,
+    "cpu_freq": {
+        "current": 3000.0,
+        "min": 0.0,
+        "max": 3000.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3000.0,
+            "min": 0.0,
+            "max": 3000.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 1907.7119102478027,
+            "used": 840.0525703430176
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 4070 Ti",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 4070 Ti",
+            "memory_total": 12878610432
+        }
+    ],
+    "memory": {
+        "total": 31.714561462402344
+    }
+}

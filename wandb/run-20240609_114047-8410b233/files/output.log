@@ -1,0 +1,324 @@
+INFO - Logging setup complete for experiment number: 1717904445
+INFO - Experiment hyperparameters:
+C_COMPRESSION_EPOCH=30
+C_COS_PRUNE_EPOCH=20
+C_DEV_NUM=25
+C_FT_EPOCH=100
+C_OVERALL_ACCURACY_CHANGE_THRESHOLD=0.01
+C_PRUNE_FILTER_MAX_RATIO=0.08
+C_PRUNE_FILTER_MIN_RATIO=0.01
+C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD=0.003
+C_WEIGHT_SHARING_MAX_RATIO=1
+C_WEIGHT_SHARING_MIN_RATIO=0.25
+C_WEIGHT_SHARING_SCALING_FACTOR=2
+D_CIFAR100_TRAIN_MEAN=(0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
+D_CIFAR100_TRAIN_STD=(0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
+D_CIFAR10_TRAIN_MEAN=(0.49139968, 0.48215827, 0.44653124)
+D_CIFAR10_TRAIN_STD=(0.24703233, 0.24348505, 0.26158768)
+D_MNIST_TRAIN_MEAN=(0.1307,)
+D_MNIST_TRAIN_STD=(0.3081,)
+D_VAL_PROPORTION=0
+RL_DISCOUNT_FACTOR=0.9
+RL_GENERATE_NUM_SCALING_FACTOR=2
+RL_GREEDY_EPSILON=0
+RL_MAX_GENERATE_NUM=8
+RL_MAX_SAMPLE_STEP=2
+RL_PPO_CLIP=0.2
+RL_PPO_ENABLE=False
+RL_PROBABILITY_LOWER_BOUND=1e-05
+RL_PRUNE_FILTER_NOISE_VAR=0.025
+RL_STEP_LENGTH=0.8
+RL_WEIGHT_SHARING_NOISE_VAR=0.05
+T_BATCH_SIZE=128
+T_FT_LR_SCHEDULAR_INITIAL_LR=0.01
+T_LR_SCHEDULAR_INITIAL_LR=0.1
+T_LR_SCHEDULAR_MIN_LR=1e-06
+T_NUM_WORKERS=1
+T_ORIGINAL_EPOCH=250
+T_WARM=1
+INFO - Start with random seed: 1717904445
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Files already downloaded and verified
+
+INFO - Initial prune probability distribution: tensor([0.0052, 0.0052, 0.0103, 0.0103, 0.0206, 0.0206, 0.0206, 0.0412, 0.0412,
+        0.0412, 0.0412, 0.0412, 0.0412, 0.3299, 0.3299])
+Generated architectures:   0%|                                                                | 0/8 [00:00<?, ?model/s]
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+INFO - Current new net Q value cache: tensor([0.6465, 0.7922, 0.5713, 0.5992, 0.1800, 0.9581, 0.8547, 0.5288])
+INFO - Current prune probability distribution cache: tensor([[7.7194e-03, 2.4131e-03, 8.0077e-03, 2.6935e-02, 2.5086e-02, 1.2608e-02,
+         4.8251e-02, 4.3186e-02, 3.2515e-02, 3.5905e-02, 6.1188e-02, 4.6832e-02,
+         3.7643e-02, 2.9285e-01, 3.1886e-01],
+        [9.4521e-06, 9.4521e-06, 4.9575e-02, 9.4521e-06, 2.7073e-02, 1.2071e-02,
+         6.7713e-03, 5.5028e-02, 5.1502e-02, 6.5502e-02, 9.4521e-06, 5.4475e-02,
+         4.3492e-02, 3.3094e-01, 3.0354e-01],
+        [1.5621e-02, 1.3059e-02, 4.0802e-02, 8.8422e-06, 5.6553e-03, 5.4810e-02,
+         1.7171e-02, 3.7089e-02, 5.7026e-02, 5.5022e-02, 4.3735e-02, 3.7904e-02,
+         3.4812e-02, 2.9541e-01, 2.9187e-01],
+        [2.5383e-02, 4.4596e-05, 9.6156e-06, 2.3026e-02, 9.6156e-06, 4.0149e-02,
+         4.7410e-02, 2.6195e-02, 6.9651e-02, 9.6156e-06, 3.3378e-02, 4.2291e-02,
+         5.0394e-02, 3.2299e-01, 3.1906e-01],
+        [9.4759e-06, 3.7526e-02, 4.2863e-02, 9.4759e-06, 3.1350e-02, 9.3162e-03,
+         2.6497e-02, 1.3906e-02, 7.4622e-02, 9.4759e-06, 2.9049e-02, 4.9758e-02,
+         4.5975e-02, 3.2821e-01, 3.1090e-01],
+        [1.6051e-02, 1.1141e-03, 1.5830e-02, 1.1083e-02, 6.0393e-03, 2.8402e-02,
+         1.6171e-02, 4.5594e-02, 4.8655e-02, 4.8438e-02, 4.7589e-02, 3.4995e-02,
+         3.1728e-02, 3.4030e-01, 3.0801e-01],
+        [1.0171e-05, 1.7868e-02, 1.0171e-05, 1.0171e-05, 1.4147e-02, 9.0006e-03,
+         1.6602e-02, 1.0171e-05, 3.4849e-02, 6.7240e-02, 3.1853e-02, 4.0038e-02,
+         7.6903e-02, 3.6338e-01, 3.2808e-01],
+        [1.0827e-02, 2.1568e-02, 9.9280e-06, 9.3340e-03, 9.9280e-06, 9.9280e-06,
+         3.9722e-02, 4.9218e-02, 4.2607e-02, 1.9572e-02, 4.7650e-02, 4.7171e-02,
+         4.4579e-02, 3.2972e-01, 3.3800e-01]])
+
+
+
+
+
+INFO - epoch: 1/25, train_Loss: 0.6473131284422582, top1_acc: 0.6365, top5_acc: 0.8554
+
+
+
+
+
+INFO - epoch: 2/25, train_Loss: 0.5657676458358765, top1_acc: 0.6328, top5_acc: 0.8551
+
+
+
+
+
+INFO - epoch: 3/25, train_Loss: 0.5148509840678681, top1_acc: 0.6588, top5_acc: 0.8702
+
+
+
+
+
+
+INFO - epoch: 4/25, train_Loss: 0.47672791855262064, top1_acc: 0.6648, top5_acc: 0.8745
+
+
+
+
+
+INFO - epoch: 5/25, train_Loss: 0.4364318424630958, top1_acc: 0.6638, top5_acc: 0.8736
+
+
+
+
+
+
+INFO - epoch: 6/25, train_Loss: 0.3921132879260251, top1_acc: 0.6779, top5_acc: 0.8849
+
+
+
+
+
+
+
+INFO - epoch: 7/25, train_Loss: 0.339511249090552, top1_acc: 0.6677, top5_acc: 0.8754
+
+
+
+
+
+
+
+INFO - epoch: 8/25, train_Loss: 0.29922321147244907, top1_acc: 0.6791, top5_acc: 0.8806
+
+
+
+
+
+
+INFO - epoch: 9/25, train_Loss: 0.25680363684168556, top1_acc: 0.6783, top5_acc: 0.8831
+
+
+
+
+
+
+
+INFO - epoch: 10/25, train_Loss: 0.21047019403037207, top1_acc: 0.688, top5_acc: 0.8852
+
+
+
+
+
+
+INFO - epoch: 11/25, train_Loss: 0.16516226671083503, top1_acc: 0.6964, top5_acc: 0.8881
+
+
+
+
+
+
+
+INFO - epoch: 12/25, train_Loss: 0.13797870840486662, top1_acc: 0.6988, top5_acc: 0.8971
+
+
+
+
+
+INFO - epoch: 13/25, train_Loss: 0.10625595141135519, top1_acc: 0.7063, top5_acc: 0.8986
+
+
+
+
+
+
+INFO - epoch: 14/25, train_Loss: 0.08307140900055542, top1_acc: 0.7127, top5_acc: 0.8983
+
+
+
+
+
+
+
+INFO - epoch: 15/25, train_Loss: 0.06536649044869883, top1_acc: 0.7173, top5_acc: 0.9007
+
+
+
+
+
+
+
+
+INFO - epoch: 16/25, train_Loss: 0.0518586660194618, top1_acc: 0.7188, top5_acc: 0.9017
+
+
+
+
+
+
+
+INFO - epoch: 17/25, train_Loss: 0.04378023657047421, top1_acc: 0.7226, top5_acc: 0.9031
+
+
+
+
+
+
+
+INFO - epoch: 18/25, train_Loss: 0.03951247349438612, top1_acc: 0.7224, top5_acc: 0.9033
+
+
+
+
+
+
+
+INFO - epoch: 19/25, train_Loss: 0.03996380379833186, top1_acc: 0.7233, top5_acc: 0.9037
+
+
+
+
+
+
+
+INFO - epoch: 20/25, train_Loss: 0.03604194045464611, top1_acc: 0.7242, top5_acc: 0.9042
+
+
+
+
+
+
+INFO - epoch: 21/25, train_Loss: 0.03621828277497683, top1_acc: 0.7221, top5_acc: 0.9035
+
+
+
+
+
+
+
+INFO - epoch: 22/25, train_Loss: 0.033375445014947214, top1_acc: 0.7223, top5_acc: 0.9039
+
+
+
+
+
+
+INFO - epoch: 23/25, train_Loss: 0.03464658984371349, top1_acc: 0.7245, top5_acc: 0.9024
+
+
+
+
+
+
+INFO - epoch: 24/25, train_Loss: 0.03350836747561765, top1_acc: 0.7241, top5_acc: 0.9032
+
+
+
+
+
+
+INFO - epoch: 25/25, train_Loss: 0.03599416396087583, top1_acc: 0.722, top5_acc: 0.9023
+
+INFO - Generated net wins
+INFO - Generated Model Top1 Accuracy List: [0.7322, 0.7245], Top5 Accuracy List: [0.9002, 0.9024]
+Traceback (most recent call last):
+  File "A:\ECE397\compress.py", line 321, in <module>
+    net = prune_architecture(net=net, prune_agent=prune_agent, epoch=epoch)
+  File "A:\ECE397\compress.py", line 85, in prune_architecture
+    net, optimal_net_index = get_optimal_architecture(original_net=net, prune_agent=prune_agent)
+  File "A:\ECE397\compress.py", line 136, in get_optimal_architecture
+    logging.info(f"current prune probability distribution: {prune_agent.prune_distributio}")
+AttributeError: 'Prune_agent' object has no attribute 'prune_distributio'

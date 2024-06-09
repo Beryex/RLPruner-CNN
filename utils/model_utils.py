@@ -99,10 +99,10 @@ class Custom_Conv2d(nn.Module):
             return
         if self.original_weight is not None:
             original_weights = self.original_weight.data.clone().view(-1, 1).cuda()
-            num_clusters = self.weight.shape[0] // settings.WEIGHT_SHARING_SCALING_FACTOR
+            num_clusters = self.weight.shape[0] // settings.C_WEIGHT_SHARING_SCALING_FACTOR
         else:
             original_weights = self.weight.data.clone().view(-1, 1).cuda()
-            num_clusters = min(len(original_weights) // settings.WEIGHT_SHARING_SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
+            num_clusters = min(len(original_weights) // settings.C_WEIGHT_SHARING_SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
 
         kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=False, gpu=True)
         kmeans.train(original_weights.cpu().numpy())
@@ -206,10 +206,10 @@ class Custom_Linear(nn.Module):
             return
         if self.original_weight is not None:
             original_weights = self.original_weight.data.clone().view(-1, 1).cuda()
-            num_clusters = self.weight.shape[0] // settings.WEIGHT_SHARING_SCALING_FACTOR
+            num_clusters = self.weight.shape[0] // settings.C_WEIGHT_SHARING_SCALING_FACTOR
         else:
             original_weights = self.weight.data.clone().view(-1, 1).cuda()
-            num_clusters = min(len(original_weights) // settings.WEIGHT_SHARING_SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
+            num_clusters = min(len(original_weights) // settings.C_WEIGHT_SHARING_SCALING_FACTOR, 2048) # 2048 comes from faiss supports 2048 clusters at most
         
         kmeans = faiss.Kmeans(d=1, k=num_clusters, niter=50, verbose=False, gpu=True)
         kmeans.train(original_weights.cpu().numpy())

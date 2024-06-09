@@ -1,0 +1,945 @@
+Files already downloaded and verified
+Files already downloaded and verified
+INFO - Logging setup complete for experiment number: 1717908653
+INFO - Experiment hyperparameters:
+C_COMPRESSION_EPOCH=30
+C_COS_PRUNE_EPOCH=20
+C_DEV_NUM=25
+C_FT_EPOCH=100
+C_OVERALL_ACCURACY_CHANGE_THRESHOLD=0.01
+C_PRUNE_FILTER_MAX_RATIO=0.08
+C_PRUNE_FILTER_MIN_RATIO=0.01
+C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD=0.003
+C_WEIGHT_SHARING_MAX_RATIO=1
+C_WEIGHT_SHARING_MIN_RATIO=0.25
+C_WEIGHT_SHARING_SCALING_FACTOR=2
+D_CIFAR100_TRAIN_MEAN=(0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
+D_CIFAR100_TRAIN_STD=(0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
+D_CIFAR10_TRAIN_MEAN=(0.49139968, 0.48215827, 0.44653124)
+D_CIFAR10_TRAIN_STD=(0.24703233, 0.24348505, 0.26158768)
+D_MNIST_TRAIN_MEAN=(0.1307,)
+D_MNIST_TRAIN_STD=(0.3081,)
+D_VAL_PROPORTION=0
+RL_DISCOUNT_FACTOR=0.9
+RL_GENERATE_NUM_SCALING_FACTOR=2
+RL_GREEDY_EPSILON=0
+RL_MAX_GENERATE_NUM=8
+RL_MAX_SAMPLE_STEP=2
+RL_PPO_CLIP=0.2
+RL_PPO_ENABLE=False
+RL_PROBABILITY_LOWER_BOUND=1e-05
+RL_PRUNE_FILTER_NOISE_VAR=0.025
+RL_STEP_LENGTH=0.8
+RL_WEIGHT_SHARING_NOISE_VAR=0.05
+T_BATCH_SIZE=128
+T_FT_LR_SCHEDULAR_INITIAL_LR=0.01
+T_LR_SCHEDULAR_INITIAL_LR=0.1
+T_LR_SCHEDULAR_MIN_LR=1e-06
+T_NUM_WORKERS=1
+T_ORIGINAL_EPOCH=250
+T_WARM=1
+INFO - Start with random seed: 1717908653
+INFO - Initial prune probability distribution: tensor([0.0052, 0.0052, 0.0103, 0.0103, 0.0206, 0.0206, 0.0206, 0.0412, 0.0412,
+        0.0412, 0.0412, 0.0412, 0.0412, 0.3299, 0.3299])
+
+Generated architectures:   0%|                                                                | 0/8 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+
+
+
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+
+
+
+
+INFO - Current new net Q value cache: tensor([0.9453, 0.8794, 0.8457, 0.4152, 0.2604, 0.8200, 0.9475, 0.9472])
+INFO - Current prune probability distribution cache: tensor([[9.4743e-06, 9.4743e-06, 4.7584e-03, 1.2239e-02, 3.6829e-02, 1.1492e-02,
+         3.1790e-02, 5.0147e-02, 2.9174e-02, 5.1942e-02, 5.3838e-02, 3.8400e-02,
+         2.9585e-02, 3.2735e-01, 3.2244e-01],
+        [8.1339e-03, 2.5978e-03, 1.2512e-02, 1.6031e-02, 2.2580e-02, 2.3328e-02,
+         1.3032e-02, 3.0888e-02, 4.2788e-02, 6.8584e-02, 2.9317e-02, 2.6783e-02,
+         5.0492e-02, 3.3022e-01, 3.2271e-01],
+        [9.1289e-06, 9.1289e-06, 9.1289e-06, 9.1289e-06, 3.4664e-02, 1.9385e-02,
+         4.4329e-02, 5.1170e-02, 4.1672e-02, 3.9646e-02, 6.7684e-02, 2.7600e-02,
+         5.1152e-02, 3.0299e-01, 3.1967e-01],
+        [9.5391e-06, 3.0854e-02, 9.5391e-06, 9.5391e-06, 9.5391e-06, 9.2077e-03,
+         2.6469e-02, 7.0128e-02, 6.7606e-02, 7.2604e-02, 3.1808e-02, 3.0348e-02,
+         6.0963e-02, 3.0935e-01, 2.9062e-01],
+        [1.7635e-02, 3.7219e-02, 1.4956e-02, 8.8715e-06, 9.0625e-03, 4.3438e-02,
+         1.5925e-02, 3.3568e-02, 3.4372e-02, 1.9592e-02, 6.1922e-02, 4.2049e-02,
+         5.6120e-02, 3.0784e-01, 3.0629e-01],
+        [8.0631e-03, 1.0042e-02, 9.8138e-06, 9.8138e-06, 9.8138e-06, 3.3700e-02,
+         3.3761e-02, 6.4390e-02, 3.9237e-02, 4.4591e-02, 3.4585e-02, 4.0356e-02,
+         3.8217e-02, 3.3057e-01, 3.2246e-01],
+        [1.0241e-05, 1.0241e-05, 1.0241e-05, 9.7655e-03, 3.4601e-03, 2.3367e-02,
+         2.6645e-02, 1.9989e-02, 4.6910e-02, 6.2271e-02, 6.1042e-02, 3.6434e-02,
+         4.1981e-02, 3.4251e-01, 3.2559e-01],
+        [2.0374e-02, 9.3146e-06, 1.0241e-02, 1.5881e-02, 7.1537e-03, 2.5240e-02,
+         1.0905e-02, 2.7599e-02, 6.6903e-02, 4.4197e-02, 4.5195e-02, 3.0236e-02,
+         7.1082e-02, 3.1762e-01, 3.0737e-01]])
+
+
+
+
+
+INFO - epoch: 1/25, train_Loss: 0.5879191529301121, top1_acc: 0.6445, top5_acc: 0.8642
+
+
+
+
+
+INFO - epoch: 2/25, train_Loss: 0.5451449467550458, top1_acc: 0.6449, top5_acc: 0.8693
+
+
+
+
+
+
+INFO - epoch: 3/25, train_Loss: 0.502409589793676, top1_acc: 0.65, top5_acc: 0.8727
+
+
+
+
+
+
+INFO - epoch: 4/25, train_Loss: 0.4661644419745716, top1_acc: 0.6542, top5_acc: 0.8766
+
+
+
+
+
+
+INFO - epoch: 5/25, train_Loss: 0.41813301357924176, top1_acc: 0.6611, top5_acc: 0.8716
+
+
+
+
+
+
+INFO - epoch: 6/25, train_Loss: 0.37758395952336926, top1_acc: 0.6676, top5_acc: 0.8792
+
+
+
+
+
+
+INFO - epoch: 7/25, train_Loss: 0.3376157223568548, top1_acc: 0.6676, top5_acc: 0.8765
+
+
+
+
+
+
+INFO - epoch: 8/25, train_Loss: 0.29323460013055436, top1_acc: 0.6828, top5_acc: 0.8847
+
+
+
+
+
+INFO - epoch: 9/25, train_Loss: 0.24823928058452313, top1_acc: 0.6855, top5_acc: 0.8845
+
+
+
+
+
+INFO - epoch: 10/25, train_Loss: 0.20244871419104163, top1_acc: 0.6871, top5_acc: 0.885
+
+
+
+
+INFO - epoch: 11/25, train_Loss: 0.15997287186096087, top1_acc: 0.6975, top5_acc: 0.8887
+
+
+
+
+
+
+INFO - epoch: 12/25, train_Loss: 0.12771118158841377, top1_acc: 0.7058, top5_acc: 0.8978
+
+
+
+
+
+
+INFO - epoch: 13/25, train_Loss: 0.10357751574872247, top1_acc: 0.7063, top5_acc: 0.8939
+
+
+
+
+
+
+INFO - epoch: 14/25, train_Loss: 0.08094544905473662, top1_acc: 0.7146, top5_acc: 0.9021
+
+
+
+
+
+INFO - epoch: 15/25, train_Loss: 0.06616436122009135, top1_acc: 0.7232, top5_acc: 0.9005
+
+
+
+
+
+INFO - epoch: 16/25, train_Loss: 0.05175915701062326, top1_acc: 0.7263, top5_acc: 0.9044
+
+
+
+
+
+
+INFO - epoch: 17/25, train_Loss: 0.04258546062633205, top1_acc: 0.7268, top5_acc: 0.9044
+
+
+
+
+
+
+INFO - epoch: 18/25, train_Loss: 0.03974244167046893, top1_acc: 0.727, top5_acc: 0.9061
+
+
+
+
+
+
+INFO - epoch: 19/25, train_Loss: 0.03819692261931498, top1_acc: 0.7286, top5_acc: 0.9061
+
+
+
+
+
+
+INFO - epoch: 20/25, train_Loss: 0.03434742579374777, top1_acc: 0.728, top5_acc: 0.9075
+
+
+
+
+
+
+INFO - epoch: 21/25, train_Loss: 0.034442449239847225, top1_acc: 0.7277, top5_acc: 0.9068
+
+
+
+
+
+INFO - epoch: 22/25, train_Loss: 0.03545164882712771, top1_acc: 0.7284, top5_acc: 0.9071
+
+
+
+
+
+
+INFO - epoch: 23/25, train_Loss: 0.032994550125211325, top1_acc: 0.7303, top5_acc: 0.9082
+
+
+
+
+
+
+INFO - epoch: 24/25, train_Loss: 0.033851962418669404, top1_acc: 0.7284, top5_acc: 0.9074
+
+
+
+
+
+INFO - epoch: 25/25, train_Loss: 0.034432394000108515, top1_acc: 0.7267, top5_acc: 0.9041
+
+
+INFO - Generated net wins
+INFO - Generated Model Top1 Accuracy List: [0.7322, 0.7303], Top5 Accuracy List: [0.9002, 0.9082]
+INFO - current prune probability distribution: tensor([0.0010, 0.0010, 0.0021, 0.0099, 0.0069, 0.0228, 0.0254, 0.0242, 0.0458,
+        0.0581, 0.0571, 0.0374, 0.0418, 0.3400, 0.3265])
+INFO - current prune probability distribution change: tensor([-0.0041, -0.0041, -0.0082, -0.0004, -0.0137,  0.0022,  0.0048, -0.0170,
+         0.0045,  0.0168,  0.0158, -0.0038,  0.0006,  0.0101, -0.0034])
+INFO - Epoch: 1/30, modification_num: 987, compression ratio: FLOPs: 0.11550283432006836, Parameter number 0.15933382511138916
+Generated architectures:   0%|                                                                | 0/8 [00:00<?, ?model/s]
+Testing round:   9%|█████▊                                                           | 7/79 [00:02<00:16,  4.26batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.39s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.39s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.41s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.41s/model]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.43s/model]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.43s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.44s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.44s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.44s/model]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.36s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.33s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.33s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.39s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.39s/model]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.41s/model]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.41s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.44s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.44s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.42s/model]
+
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:09,  3.33s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.39s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.39s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.40s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.40s/model]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:  96%|█████████████████████████████████████████████████████████████▌  | 76/79 [00:02<00:00, 73.72batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.36s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.43s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.43s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.42s/model]
+
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.36s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.40s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.40s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.41s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.41s/model]
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]
+Testing round:  78%|██████████████████████████████████████████████████▏             | 62/79 [00:02<00:00, 61.13batch/s]
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.43s/model]
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.43s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.43s/model]
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.43s/model]
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.43s/model]
+         1.7849e-02, 3.3353e-02, 4.3831e-02, 6.8166e-02, 5.8794e-02, 2.9424e-02,e-06, 8.7983e-06, 8.7983e-06, 2.9212e-02, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  20%|█▌      | 77/391 [00:03<00:05, 53.55batch/s, loss (batch)=0.848]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  48%|███▎   | 186/391 [00:05<00:03, 54.56batch/s, loss (batch)=0.676]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  73%|█████  | 286/391 [00:07<00:02, 49.39batch/s, loss (batch)=0.878]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  98%|███████▊| 382/391 [00:10<00:00, 49.83batch/s, loss (batch)=0.53]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6264307299233458, top1_acc: 0.6298, top5_acc: 0.8544                                 2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6264307299233458, top1_acc: 0.6298, top5_acc: 0.8544                                 2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6264307299233458, top1_acc: 0.6298, top5_acc: 0.8544                                 2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6264307299233458, top1_acc: 0.6298, top5_acc: 0.8544                                 2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6264307299233458, top1_acc: 0.6298, top5_acc: 0.8544                                 2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6264307299233458, top1_acc: 0.6298, top5_acc: 0.8544                                 2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  25%|██      | 99/391 [00:04<00:05, 54.31batch/s, loss (batch)=0.485]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  25%|██      | 99/391 [00:04<00:05, 54.31batch/s, loss (batch)=0.485]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  25%|██      | 99/391 [00:04<00:05, 54.31batch/s, loss (batch)=0.485]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  25%|██      | 99/391 [00:04<00:05, 54.31batch/s, loss (batch)=0.485]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  25%|██      | 99/391 [00:04<00:05, 54.31batch/s, loss (batch)=0.485]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+INFO - Epoch: 2/30, modification_num: 972, compression ratio: FLOPs: 0.11550283432006836, Parameter number 0.159333825111389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.37s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.41s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.41s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.43s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.43s/model]11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Testing round:  81%|███████████████████████████████████████████████████▊            | 64/79 [00:02<00:00, 60.08batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.49s/model]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.49s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.46s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.46s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.45s/model]11389160.0073,
+                                                                                                                       11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.38s/model]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.38s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.42s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.40s/model]11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Testing round:  51%|████████████████████████████████▍                               | 40/79 [00:02<00:01, 35.49batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.42s/model]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.42s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.43s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.43s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.46s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.46s/model]11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.45s/model]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.45s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.42s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.42s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.42s/model]11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Testing round:   1%|▊                                                                | 1/79 [00:02<02:47,  2.15s/batch]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.42s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.39s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.39s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.38s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.38s/model]11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.44s/model]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.44s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.42s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.42s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.47s/model]11389160.0073,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0073,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.36s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.40s/model]11389160.0073,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.40s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.40s/model]11389160.0073,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.40s/model]11389160.0073,
+Training best generated Architecture: Epoch 1/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  11%|▉       | 43/391 [00:03<00:10, 33.13batch/s, loss (batch)=0.286]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  39%|██▋    | 152/391 [00:05<00:04, 56.25batch/s, loss (batch)=0.368]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  67%|████▋  | 261/391 [00:07<00:02, 49.03batch/s, loss (batch)=0.659]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  86%|██████ | 336/391 [00:08<00:01, 47.75batch/s, loss (batch)=0.499]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:  58%|█████████████████████████████████████▎                          | 46/79 [00:02<00:00, 45.24batch/s]2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.528171280632391, top1_acc: 0.6411, top5_acc: 0.8571                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.528171280632391, top1_acc: 0.6411, top5_acc: 0.8571                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.528171280632391, top1_acc: 0.6411, top5_acc: 0.8571                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.528171280632391, top1_acc: 0.6411, top5_acc: 0.8571                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.528171280632391, top1_acc: 0.6411, top5_acc: 0.8571                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.528171280632391, top1_acc: 0.6411, top5_acc: 0.8571                                  2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  23%|█▊      | 91/391 [00:04<00:05, 52.24batch/s, loss (batch)=0.511]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  23%|█▊      | 91/391 [00:04<00:05, 52.24batch/s, loss (batch)=0.511]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  23%|█▊      | 91/391 [00:04<00:05, 52.24batch/s, loss (batch)=0.511]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:  23%|█▊      | 91/391 [00:04<00:05, 52.24batch/s, loss (batch)=0.511]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 6/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 7/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 8/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 9/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 10/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 11/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 12/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 13/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 14/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 15/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 17/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 18/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 19/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 20/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 21/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 22/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 23/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 24/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 25/25:   0%|                                    | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Testing round:  58%|█████████████████████████████████████▎                          | 46/79 [00:02<00:00, 38.70batch/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.50s/model]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.50s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.72s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.72s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:11<00:03,  3.75s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:11<00:03,  3.75s/model]11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Testing round:   1%|▊                                                                | 1/79 [00:02<02:47,  2.15s/batch]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:27<01:21, 27.22s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:30<00:26, 13.22s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:30<00:26, 13.22s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:34<00:08,  8.76s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:34<00:08,  8.76s/model]11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.49s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.46s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.46s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.47s/model]11389160.0049,
+                                                                                                                       11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.51s/model]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.51s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:06<00:06,  3.50s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.51s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.51s/model]11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:11,  3.73s/model]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:11,  3.73s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.55s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.51s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.51s/model]11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Testing round:  10%|██████▌                                                          | 8/79 [00:02<00:15,  4.69batch/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.34s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.56s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.56s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.58s/model]11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Testing round:   1%|▊                                                                | 1/79 [00:02<03:01,  2.32s/batch]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:11,  3.68s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:19<00:21, 10.62s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:19<00:21, 10.62s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:22<00:07,  7.34s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:22<00:07,  7.34s/model]11389160.0049,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]11389160.0049,
+Testing round:  90%|█████████████████████████████████████████████████████████▌      | 71/79 [00:02<00:00, 66.31batch/s]11389160.0049,
+Generated architectures:   0%|                                                                | 0/4 [00:00<?, ?model/s]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.43s/model]11389160.0049,
+Generated architectures:  25%|██████████████                                          | 1/4 [00:03<00:10,  3.43s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.52s/model]11389160.0049,
+Generated architectures:  50%|████████████████████████████                            | 2/4 [00:07<00:07,  3.52s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.55s/model]11389160.0049,
+Generated architectures:  75%|██████████████████████████████████████████              | 3/4 [00:10<00:03,  3.55s/model]11389160.0049,
+Training best generated Architecture: Epoch 1/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:   6%|▌        | 23/391 [00:03<00:28, 13.05batch/s, loss (batch)=0.26]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  35%|██▍    | 137/391 [00:05<00:04, 55.90batch/s, loss (batch)=0.585]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  57%|███▉   | 222/391 [00:07<00:03, 53.58batch/s, loss (batch)=0.658]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  76%|█████▎ | 296/391 [00:09<00:03, 27.47batch/s, loss (batch)=0.713]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25:  88%|██████▏| 345/391 [00:11<00:01, 25.52batch/s, loss (batch)=0.809]2, 5.6504e-02,
+Training best generated Architecture: Epoch 1/25: 100%|███████| 391/391 [00:12<00:00, 23.49batch/s, loss (batch)=0.657]2, 5.6504e-02,
+Testing round:   0%|                                                                         | 0/79 [00:00<?, ?batch/s]2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+INFO - epoch: 1/25, train_Loss: 0.6085485155929995, top1_acc: 0.6391, top5_acc: 0.864                                  2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 3/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 4/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+Training best generated Architecture: Epoch 5/25:   0%|                                     | 0/391 [00:00<?, ?batch/s]2, 5.6504e-02,
+KeyboardInterruptA\anaconda3\envs\Pytorch\lib\site-packages\torch\_ops.py", line 692, in __call__, in __enter__t__ch/s]2, 5.6504e-02,
+KeyboardInterruptA\anaconda3\envs\Pytorch\lib\site-packages\torch\_ops.py", line 692, in __call__, in __enter__t__ch/s]2, 5.6504e-02,

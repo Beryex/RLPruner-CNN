@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "A:\ECE397\compress.py", line 270, in <module>
+    wandb.log(f'Start with random seed: {start_time}')
+  File "C:\Users\A\anaconda3\envs\Pytorch\lib\site-packages\wandb\sdk\wandb_run.py", line 292, in wrapper
+    return func(self, *args, **kwargs)
+  File "C:\Users\A\anaconda3\envs\Pytorch\lib\site-packages\wandb\sdk\wandb_run.py", line 255, in wrapper
+    return func(self, *args, **kwargs)
+  File "C:\Users\A\anaconda3\envs\Pytorch\lib\site-packages\wandb\sdk\wandb_run.py", line 1609, in log
+    self._log(data=data, step=step, commit=commit)
+  File "C:\Users\A\anaconda3\envs\Pytorch\lib\site-packages\wandb\sdk\wandb_run.py", line 1386, in _log
+    raise ValueError("wandb.log must be passed a dictionary")
+ValueError: wandb.log must be passed a dictionary

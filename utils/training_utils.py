@@ -3,6 +3,7 @@ from conf import settings
 import os
 import random
 import numpy as np
+import wandb
 import logging
 from torch import Tensor
 import torch.optim as optim
@@ -24,6 +25,21 @@ def setup_logging(experiment_id: int,
                   net: str, 
                   dataset: str, 
                   action: str):
+    # initialize wandb
+    hyperparams_config = {
+        "net": net,
+        "dataset": dataset,
+        "action": action, 
+        "random_seed": experiment_id
+    }
+    hyperparams_config.update(settings.__dict__)
+    wandb.init(
+        project="AdaptivePruningForCNN",
+        name=f"{action}_{net}_on_{dataset}_{experiment_id}",
+        config=hyperparams_config
+    )
+
+    # initialize logging
     log_directory = "experiment_log"
     if not os.path.isdir(log_directory):
         os.mkdir(log_directory)

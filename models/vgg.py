@@ -82,7 +82,7 @@ class VGG16(nn.Module):
                             prune_agent: Prune_agent,
                             probability_lower_bound: float = 0.005):
         prune_counter = torch.zeros(self.prune_choices_num)
-        noise = torch.randn(self.prune_choices_num) * prune_agent.noise_var
+        noise = torch.randn(self.prune_choices_num) * prune_agent.noise_var * (torch.rand(1).item() * 0.5 + 0.5)
         noised_distribution = prune_agent.prune_distribution + noise
         noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)

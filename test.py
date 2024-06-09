@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import time
-import sys
+import wandb
 import logging
 import argparse
 from thop import profile
@@ -9,34 +9,8 @@ from models.vgg import Custom_Conv2d, Custom_Linear
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from conf import settings
 from utils import setup_logging, get_dataloader, count_custom_conv2d, count_custom_linear, torch_set_random_seed
 
-
-def get_args():
-    parser = argparse.ArgumentParser(description='train given model under given dataset')
-    parser.add_argument('-net', type=str, default=None, help='the type of model to train')
-    parser.add_argument('-dataset', type=str, default=None, help='the dataset to train on')
-    parser.add_argument('-b', type=int, default=settings.BATCH_SIZE, help='batch size for dataloader')
-
-    args = parser.parse_args()
-    check_args(args)
-
-    return args
-
-def check_args(args: argparse.Namespace):
-    if args.net is None:
-        logging.error("the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-        sys.exit(1)
-    elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
-        logging.error('the specific model is not supported')
-        sys.exit(1)
-    if args.dataset is None:
-        logging.error("the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
-        sys.exit(1)
-    elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
-        logging.error('the specific dataset is not supported')
-        sys.exit(1)
 
 def free_initial_weight(net):
     # free all initial weights
@@ -78,18 +52,18 @@ def test_network(target_net: nn.Module):
 def test_compression_result(original_net: nn.Module, 
                             compressed_net: nn.Module):
     top1_acc, top5_acc, loss, original_FLOPs_num, original_para_num = test_network(original_net)
-    logging.info(f'Original model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
-    logging.info(f'Original model has FLOPs: {original_FLOPs_num}, Parameter Num: {original_para_num}')
+    wandb.log(f'Original model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
+    wandb.log(f'Original model has FLOPs: {original_FLOPs_num}, Parameter Num: {original_para_num}')
 
     top1_acc, top5_acc, loss, compressed_FLOPs_num, compressed_para_num = test_network(original_net)
-    logging.info(f'Compressed model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
-    logging.info(f'Compressed model has FLOPs: {compressed_FLOPs_num}, Parameter Num: {compressed_para_num}')
+    wandb.log(f'Compressed model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
+    wandb.log(f'Compressed model has FLOPs: {compressed_FLOPs_num}, Parameter Num: {compressed_para_num}')
 
     FLOPs_compression_ratio = 1 - compressed_FLOPs_num / original_FLOPs_num
     Para_compression_ratio = 1 - compressed_para_num / original_para_num
-    logging.info(f'FLOPS compressed ratio: {FLOPs_compression_ratio}, Parameter Num compressed ratio: {Para_compression_ratio}')
-    logging.info(f'Original net: {original_net}')
-    logging.info(f'Compressed net: {compressed_net}')
+    wandb.log(f'FLOPS compressed ratio: {FLOPs_compression_ratio}, Parameter Num compressed ratio: {Para_compression_ratio}')
+    wandb.log(f'Original net: {original_net}')
+    wandb.log(f'Compressed net: {compressed_net}')
 
 def show_loss(train_loss: list, 
               test_loss: list, 
@@ -108,6 +82,27 @@ def show_loss(train_loss: list,
     plt.show()
     
 
+def get_args():
+    parser = argparse.ArgumentParser(description='train given model under given dataset')
+    parser.add_argument('-net', type=str, default=None, help='the type of model to train')
+    parser.add_argument('-dataset', type=str, default=None, help='the dataset to train on')
+
+    args = parser.parse_args()
+    check_args(args)
+
+    return args
+
+def check_args(args: argparse.Namespace):
+    if args.net is None:
+        raise TypeError(f"the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
+    elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
+        raise TypeError(f"the specific model {args.net} is not supported, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
+    if args.dataset is None:
+        raise TypeError(f"the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
+    elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
+        raise TypeError(f"the specific dataset {args.dataset} is not supported, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
+
+
 if __name__ == '__main__':
     start_time = int(time.time())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -117,12 +112,12 @@ if __name__ == '__main__':
 
     torch_set_random_seed(start_time)
     torch.manual_seed(start_time)
-    logging.info(f'Start with random seed: {start_time}')
+    wandb.log(f'Start with random seed: {start_time}')
 
     # process input argument
     _, _, test_loader, _, _ = get_dataloader(dataset=args.dataset, batch_size=args.b)
-    original_net = torch.load('models/vgg16_cifar100_Original_101.pth').to(device)
-    compressed_net = torch.load('models/vgg16_cifar100_Original_101.pth').to(device)
+    original_net = torch.load('models/vgg16_cifar100_Out_of_Time_70.pth').to(device)
+    compressed_net = torch.load('models/vgg16_cifar100_Out_of_Time_70.pth').to(device)
     
     if args.net == 'lenet5':
         input = torch.rand(1, 1, 32, 32).to(device)
@@ -130,3 +125,6 @@ if __name__ == '__main__':
         input = torch.rand(1, 3, 32, 32).to(device)
     custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
     
+    FLOPs_num, para_num = profile(compressed_net, inputs = (input, ), verbose=False, custom_ops = custom_ops)
+    print(f"{FLOPs_num / 1e6}")
+    print(f"{para_num / 1e6}")

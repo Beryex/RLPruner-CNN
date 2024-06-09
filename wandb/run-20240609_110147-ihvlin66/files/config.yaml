@@ -1,0 +1,170 @@
+wandb_version: 1
+
+C_COMPRESSION_EPOCH:
+  desc: null
+  value: 30
+C_COS_PRUNE_EPOCH:
+  desc: null
+  value: 20
+C_DEV_NUM:
+  desc: null
+  value: 25
+C_FT_EPOCH:
+  desc: null
+  value: 100
+C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
+  desc: null
+  value: 0.01
+C_PRUNE_FILTER_MAX_RATIO:
+  desc: null
+  value: 0.08
+C_PRUNE_FILTER_MIN_RATIO:
+  desc: null
+  value: 0.01
+C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD:
+  desc: null
+  value: 0.005
+C_WEIGHT_SHARING_MAX_RATIO:
+  desc: null
+  value: 1
+C_WEIGHT_SHARING_MIN_RATIO:
+  desc: null
+  value: 0.25
+C_WEIGHT_SHARING_SCALING_FACTOR:
+  desc: null
+  value: 2
+D_CIFAR100_TRAIN_MEAN:
+  desc: null
+  value:
+  - 0.5070751592371323
+  - 0.48654887331495095
+  - 0.4409178433670343
+D_CIFAR100_TRAIN_STD:
+  desc: null
+  value:
+  - 0.2673342858792401
+  - 0.2564384629170883
+  - 0.27615047132568404
+D_CIFAR10_TRAIN_MEAN:
+  desc: null
+  value:
+  - 0.49139968
+  - 0.48215827
+  - 0.44653124
+D_CIFAR10_TRAIN_STD:
+  desc: null
+  value:
+  - 0.24703233
+  - 0.24348505
+  - 0.26158768
+D_MNIST_TRAIN_MEAN:
+  desc: null
+  value:
+  - 0.1307
+D_MNIST_TRAIN_STD:
+  desc: null
+  value:
+  - 0.3081
+D_VAL_PROPORTION:
+  desc: null
+  value: 0
+RL_DISCOUNT_FACTOR:
+  desc: null
+  value: 0.9
+RL_GENERATE_NUM_SCALING_FACTOR:
+  desc: null
+  value: 2
+RL_GREEDY_EPSILON:
+  desc: null
+  value: 0
+RL_MAX_GENERATE_NUM:
+  desc: null
+  value: 8
+RL_MAX_SAMPLE_STEP:
+  desc: null
+  value: 2
+RL_PPO_CLIP:
+  desc: null
+  value: 0.2
+RL_PPO_ENABLE:
+  desc: null
+  value: false
+RL_PROBABILITY_LOWER_BOUND:
+  desc: null
+  value: 1.0e-05
+RL_PRUNE_FILTER_NOISE_VAR:
+  desc: null
+  value: 0.025
+RL_STEP_LENGTH:
+  desc: null
+  value: 0.8
+RL_WEIGHT_SHARING_NOISE_VAR:
+  desc: null
+  value: 0.05
+T_BATCH_SIZE:
+  desc: null
+  value: 128
+T_FT_LR_SCHEDULAR_INITIAL_LR:
+  desc: null
+  value: 0.01
+T_LR_SCHEDULAR_INITIAL_LR:
+  desc: null
+  value: 0.1
+T_LR_SCHEDULAR_MIN_LR:
+  desc: null
+  value: 1.0e-06
+T_NUM_WORKERS:
+  desc: null
+  value: 1
+T_ORIGINAL_EPOCH:
+  desc: null
+  value: 250
+T_WARM:
+  desc: null
+  value: 1
+net:
+  desc: null
+  value: vgg16
+dataset:
+  desc: null
+  value: cifar100
+action:
+  desc: null
+  value: compress
+random_seed:
+  desc: null
+  value: 1717902106
+_wandb:
+  desc: null
+  value:
+    python_version: 3.9.18
+    cli_version: 0.17.1
+    framework: huggingface
+    huggingface_version: 4.39.3
+    is_jupyter_run: false
+    is_kaggle_kernel: true
+    start_time: 1717902107
+    t:
+      1:
+      - 1
+      - 11
+      - 41
+      - 49
+      - 55
+      2:
+      - 1
+      - 11
+      - 41
+      - 49
+      - 55
+      3:
+      - 16
+      - 23
+      4: 3.9.18
+      5: 0.17.1
+      6: 4.39.3
+      8:
+      - 2
+      - 3
+      - 5
+      13: windows-amd64
