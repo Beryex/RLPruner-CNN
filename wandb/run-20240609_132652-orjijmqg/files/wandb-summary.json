@@ -1,1 +1,0 @@
-{"top1_acc": 0.7201, "modification_num": 129, "FLOPs_compression_ratio": 0.4500942826271057, "Para_compression_ratio": 0.7123306393623352, "_timestamp": 1717927114.0642264, "_runtime": 16301.164475440979, "_step": 30, "generated_net_top1_acc": 0.7201, "_wandb": {"runtime": 16299}}
