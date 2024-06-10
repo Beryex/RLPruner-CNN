@@ -133,11 +133,10 @@ def get_optimal_architecture(original_net: nn.Module,
 
 def get_best_generated_architecture(original_net: nn.Module,
                                     prune_agent: Prune_agent):
-    # initialize all evaluating variables
-    net_list = []
-    Q_value_dict = {}
-
     for _ in range(settings.RL_LR_EPOCH):
+        # we only use the last updated net_list and Q_value_dict for fine tuning, and previous trajectory is used for updating prune distribution
+        net_list = []
+        Q_value_dict = {}
         sample_trajectory(cur_step=0,
                         original_net=original_net,
                         prune_agent=prune_agent,
