@@ -52,18 +52,18 @@ def test_network(target_net: nn.Module):
 def test_compression_result(original_net: nn.Module, 
                             compressed_net: nn.Module):
     top1_acc, top5_acc, loss, original_FLOPs_num, original_para_num = test_network(original_net)
-    wandb.log(f'Original model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
-    wandb.log(f'Original model has FLOPs: {original_FLOPs_num}, Parameter Num: {original_para_num}')
+    print(f'Original model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
+    print(f'Original model has FLOPs: {original_FLOPs_num}, Parameter Num: {original_para_num}')
 
-    top1_acc, top5_acc, loss, compressed_FLOPs_num, compressed_para_num = test_network(original_net)
-    wandb.log(f'Compressed model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
-    wandb.log(f'Compressed model has FLOPs: {compressed_FLOPs_num}, Parameter Num: {compressed_para_num}')
+    top1_acc, top5_acc, loss, compressed_FLOPs_num, compressed_para_num = test_network(compressed_net)
+    print(f'Compressed model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
+    print(f'Compressed model has FLOPs: {compressed_FLOPs_num}, Parameter Num: {compressed_para_num}')
 
     FLOPs_compression_ratio = 1 - compressed_FLOPs_num / original_FLOPs_num
     Para_compression_ratio = 1 - compressed_para_num / original_para_num
-    wandb.log(f'FLOPS compressed ratio: {FLOPs_compression_ratio}, Parameter Num compressed ratio: {Para_compression_ratio}')
-    wandb.log(f'Original net: {original_net}')
-    wandb.log(f'Compressed net: {compressed_net}')
+    print(f'FLOPS compressed ratio: {FLOPs_compression_ratio}, Parameter Num compressed ratio: {Para_compression_ratio}')
+    print(f'Original net: {original_net}')
+    print(f'Compressed net: {compressed_net}')
 
 def show_loss(train_loss: list, 
               test_loss: list, 
@@ -104,20 +104,14 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = int(time.time())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     loss_function = nn.CrossEntropyLoss()
     args = get_args()
-    setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='test')
-
-    torch_set_random_seed(start_time)
-    torch.manual_seed(start_time)
-    wandb.log(f'Start with random seed: {start_time}')
 
     # process input argument
-    _, _, test_loader, _, _ = get_dataloader(dataset=args.dataset, batch_size=args.b)
-    original_net = torch.load('models/vgg16_cifar100_Out_of_Time_70.pth').to(device)
-    compressed_net = torch.load('models/vgg16_cifar100_Out_of_Time_70.pth').to(device)
+    _, _, test_loader, _, _ = get_dataloader(dataset=args.dataset)
+    original_net = torch.load('models/vgg16_cifar100_Original_1717669735.pth').to(device)
+    compressed_net = torch.load('models/vgg16_cifar100_1717990275_finished.pth').to(device)
     
     if args.net == 'lenet5':
         input = torch.rand(1, 1, 32, 32).to(device)
@@ -125,6 +119,4 @@ if __name__ == '__main__':
         input = torch.rand(1, 3, 32, 32).to(device)
     custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
     
-    FLOPs_num, para_num = profile(compressed_net, inputs = (input, ), verbose=False, custom_ops = custom_ops)
-    print(f"{FLOPs_num / 1e6}")
-    print(f"{para_num / 1e6}")
+    test_compression_result(original_net=original_net, compressed_net=compressed_net)

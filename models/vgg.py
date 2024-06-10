@@ -87,22 +87,14 @@ class VGG16(nn.Module):
         noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)
         prune_counter = torch.round(noised_distribution * prune_agent.modification_num)
-        
-        conv_action, linear_action = {
-            'prune_filter': (self.prune_filter_conv, self.prune_filter_linear),
-            'weight_sharing': (self.weight_sharing_conv, self.weight_sharing_linear)
-        }.get(prune_agent.strategy, (None, None))
 
-        if conv_action and linear_action:
-            for target_layer_idx, count in enumerate(prune_counter):
-                target_layer = self.prune_choices[target_layer_idx].item()
-                for _ in range(int(count.item())):
-                    if target_layer_idx <= self.last_conv_layer_idx:
-                        conv_action(target_layer)
-                    else:
-                        linear_action(target_layer)
-        else:
-            raise ValueError('Invalid strategy provided')
+        for target_layer_idx, count in enumerate(prune_counter):
+            target_layer = self.prune_choices[target_layer_idx].item()
+            for _ in range(int(count.item())):
+                if target_layer_idx <= self.last_conv_layer_idx:
+                    self.prune_filter_conv(target_layer)
+                else:
+                    self.prune_filter_linear(target_layer)
         
         return noised_distribution, prune_counter
 
@@ -149,11 +141,3 @@ class VGG16(nn.Module):
         start_index = target_neuron
         end_index = target_neuron + 1
         self.linear_layers[target_layer + 3].decre_input(new_in_features, start_index, end_index)
-    
-    def weight_sharing_conv(self, 
-                      target_layer: int):
-        self.conv_layers[target_layer].weight_sharing()
-    
-    def weight_sharing_linear(self, 
-                        target_layer: int):
-        self.linear_layers[target_layer].weight_sharing()

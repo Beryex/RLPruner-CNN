@@ -124,6 +124,7 @@ class Custom_Conv2d(nn.Module):
         if self.weight_indices is not None:
             self.original_weight = None
 
+
 class Custom_Linear(nn.Module):
     def __init__(self, 
                  in_features: Optional[int] = None, 
