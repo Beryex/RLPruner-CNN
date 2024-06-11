@@ -1,5 +1,5 @@
 # hyperparameter for Reinforcement Learning
-RL_STEP_LENGTH = 0.5
+RL_STEP_LENGTH = 0.8
 RL_PRUNE_FILTER_NOISE_VAR = 0.025
 RL_WEIGHT_SHARING_NOISE_VAR = 0.05
 

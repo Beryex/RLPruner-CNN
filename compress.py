@@ -133,16 +133,15 @@ def get_optimal_architecture(original_net: nn.Module,
 
 def get_best_generated_architecture(original_net: nn.Module,
                                     prune_agent: Prune_agent):
-    for _ in range(settings.RL_LR_EPOCH):
+    best_generated_net = original_net
+    for _ in range(1, settings.RL_LR_EPOCH + 1):
         # we only use the last updated net_list and Q_value_dict for fine tuning, and previous trajectory is used for updating prune distribution
-        net_list = []
         Q_value_dict = {}
         sample_trajectory(cur_step=0,
                         original_net=original_net,
                         prune_agent=prune_agent,
                         Q_value_dict=Q_value_dict,
-                        prev_prune_counter_sum=0,
-                        net_list=net_list)
+                        prev_prune_counter_sum=0)
         prune_distribution_change = prune_agent.update_prune_distribution(settings.RL_STEP_LENGTH, settings.RL_PROBABILITY_LOWER_BOUND, settings.RL_PPO_CLIP, settings.RL_PPO_ENABLE)
         logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
         logging.info(f"current prune probability distribution change: {prune_distribution_change}")
@@ -152,9 +151,9 @@ def get_best_generated_architecture(original_net: nn.Module,
         best_net_index = torch.randint(0, settings.RL_MAX_GENERATE_NUM, (1,)).item()
         logging.info(f'Exploration: Net {best_net_index} is the best new net')
     else:
-        best_net_index = torch.argmax(Q_value_dict[0])
+        best_net_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: Net {best_net_index} is the best new net')
-    best_generated_net = net_list[best_net_index]
+    best_generated_net = prune_agent.net_list[best_net_index]
     wandb.log({"optimal_net_reward": Q_value_dict[0][best_net_index]}, step=epoch)
     
     logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
@@ -166,8 +165,7 @@ def sample_trajectory(cur_step: int,
                       original_net: nn.Module, 
                       prune_agent: Prune_agent, 
                       Q_value_dict: dict, 
-                      prev_prune_counter_sum: int, 
-                      net_list: list):
+                      prev_prune_counter_sum: int):
     # sample trajectory using DFS
     if cur_step == settings.RL_MAX_SAMPLE_STEP:
         return
@@ -190,20 +188,19 @@ def sample_trajectory(cur_step: int,
                 prune_agent.Reward_cache[tuple_key] = top1_acc
             else:
                 Q_value_dict[cur_step][model_id] = prune_agent.Reward_cache[tuple_key]
-            sample_trajectory(cur_step + 1, generated_net, prune_agent, Q_value_dict, cur_prune_counter_sum, net_list)
+            sample_trajectory(cur_step + 1, generated_net, prune_agent, Q_value_dict, cur_prune_counter_sum)
 
             if cur_step + 1 in Q_value_dict:
                 Q_value_dict[cur_step][model_id] += settings.RL_DISCOUNT_FACTOR * torch.max(Q_value_dict[cur_step + 1])
             
             # update Q_value and ReplayBuffer at top level
             if cur_step == 0:
-                net_list.append(generated_net)
-
                 min_top1_acc, min_idx = torch.min(prune_agent.ReplayBuffer[:, 0], dim=0)
                 if Q_value_dict[0][model_id] >= min_top1_acc:
                     prune_agent.ReplayBuffer[min_idx, 0] = Q_value_dict[0][model_id]
                     prune_agent.ReplayBuffer[min_idx, 1:] = prune_distribution_action
-
+                    prune_agent.net_list[min_idx] = generated_net
+            
             pbar.update(1)
 
 

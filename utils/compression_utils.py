@@ -9,21 +9,23 @@ class Prune_agent():
                  prune_distribution: Tensor,
                  ReplayBuffer: Tensor, 
                  filter_num: int):
-        self.modification_max_num = filter_num * settings.C_PRUNE_FILTER_MAX_RATIO
-        self.modification_min_num = filter_num * settings.C_PRUNE_FILTER_MIN_RATIO
+        self.modification_max_num = int(filter_num * settings.C_PRUNE_FILTER_MAX_RATIO)
+        self.modification_min_num = int(filter_num * settings.C_PRUNE_FILTER_MIN_RATIO)
         self.prune_distribution = prune_distribution
         self.noise_var = settings.RL_PRUNE_FILTER_NOISE_VAR
         self.modification_num = self.modification_max_num
         self.T_max = settings.C_COS_PRUNE_EPOCH
         self.ReplayBuffer = ReplayBuffer
         self.Reward_cache = {}
+        self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
         self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
 
     def step(self, optimal_net_index: int, epoch: int):
         if optimal_net_index == 1:
-            # means generated net is better, reset counter then clear the ReplayBuffer and Reward_cache
+            # means generated net is better, reset counter then clear the ReplayBuffer, Reward_cache and net_list
             self.ReplayBuffer.zero_()
             self.Reward_cache = {}
+            self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
             self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
         else:
             self.cur_single_step_acc_threshold += 0.001
