@@ -67,6 +67,7 @@ def get_args():
     parser.add_argument('-b', type=int, default=settings.T_BATCH_SIZE, help='batch size for dataloader')
     parser.add_argument('-warm', type=int, default=settings.T_WARM, help='warm up training phase')
     parser.add_argument('-n', type=int, default=settings.T_NUM_WORKERS, help='num_workers for dataloader')
+    parser.add_argument('-random_seed', type=int, default=None, help='the random seed for the current new compression')
 
     args = parser.parse_args()
     check_args(args)
@@ -85,14 +86,17 @@ def check_args(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    start_time = int(time.time())
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = get_args()
-    setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='train')
+    if args.random_seed is not None:
+        random_seed = args.random_seed
+    else:
+        random_seed = int(time.time())
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    setup_logging(experiment_id=random_seed, net=args.net, dataset=args.dataset, action='train')
 
     # initialize random seed
-    torch_set_random_seed(start_time)
-    logging.info(f'Start with random seed: {start_time}')
+    torch_set_random_seed(random_seed)
+    logging.info(f'Start with random seed: {random_seed}')
     
     # process input arguments
     train_loader, _, test_loader, in_channels, num_class = get_dataloader(dataset=args.dataset, batch_size=args.b, num_workers=args.n, pin_memory=True)
@@ -119,10 +123,4 @@ if __name__ == '__main__':
         # start to save best performance model after first training milestone
         if best_acc < top1_acc:
             best_acc = top1_acc
-
-            if not os.path.isdir("models"):
-                os.mkdir("models")
-            torch.save(net, f'models/{args.net}_{args.dataset}_Original_{start_time}.pth')
-    
-    end_time = time.time()
-    logging.info(f'Original training process takes {(end_time - start_time) / 60} minutes')
+            torch.save(net, f'models/{args.net}_{args.dataset}_Original_{random_seed}.pth')

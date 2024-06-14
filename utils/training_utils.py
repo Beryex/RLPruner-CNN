@@ -25,6 +25,12 @@ def setup_logging(experiment_id: int,
                   net: str, 
                   dataset: str, 
                   action: str):
+    # create relevant folders
+    if not os.path.exists("checkpoint"):
+        os.makedirs("checkpoint")
+    if not os.path.isdir("models"):
+        os.mkdir("models")
+    
     # initialize wandb
     hyperparams_config = {
         "net": net,
@@ -36,7 +42,9 @@ def setup_logging(experiment_id: int,
     wandb.init(
         project="AdaptivePruningForCNN",
         name=f"{action}_{net}_on_{dataset}_{experiment_id}",
-        config=hyperparams_config
+        id=str(experiment_id),
+        config=hyperparams_config,
+        resume=True
     )
 
     # initialize logging

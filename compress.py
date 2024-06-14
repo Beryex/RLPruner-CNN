@@ -133,8 +133,7 @@ def get_optimal_architecture(original_net: nn.Module,
 
 def get_best_generated_architecture(original_net: nn.Module,
                                     prune_agent: Prune_agent):
-    best_generated_net = original_net
-    for _ in range(1, settings.RL_LR_EPOCH + 1):
+    for _ in range(1, prune_agent.lr_epoch + 1):
         # we only use the last updated net_list and Q_value_dict for fine tuning, and previous trajectory is used for updating prune distribution
         Q_value_dict = {}
         sample_trajectory(cur_step=0,
@@ -142,9 +141,17 @@ def get_best_generated_architecture(original_net: nn.Module,
                         prune_agent=prune_agent,
                         Q_value_dict=Q_value_dict,
                         prev_prune_counter_sum=0)
-        prune_distribution_change = prune_agent.update_prune_distribution(settings.RL_STEP_LENGTH, settings.RL_PROBABILITY_LOWER_BOUND, settings.RL_PPO_CLIP, settings.RL_PPO_ENABLE)
-        logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
-        logging.info(f"current prune probability distribution change: {prune_distribution_change}")
+        logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
+        logging.info(f'Current new net Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
+        logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
+        print(prune_agent.prev_sampled_Q_value_mean)
+        print(torch.mean(Q_value_dict[0]))
+        # only update distribution when sampled trajectory is better
+        if torch.mean(Q_value_dict[0]) >= prune_agent.prev_sampled_Q_value_mean:
+            prune_agent.prev_sampled_Q_value_mean = torch.mean(Q_value_dict[0])
+            prune_distribution_change = prune_agent.update_prune_distribution(settings.RL_STEP_LENGTH, settings.RL_PROBABILITY_LOWER_BOUND, settings.RL_PPO_CLIP, settings.RL_PPO_ENABLE)
+            logging.info(f"current prune probability distribution change: {prune_distribution_change}")
+            logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
     
     # use epsilon-greedy exploration strategy
     if torch.rand(1).item() < settings.RL_GREEDY_EPSILON:
@@ -154,11 +161,8 @@ def get_best_generated_architecture(original_net: nn.Module,
         best_net_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: Net {best_net_index} is the best new net')
     best_generated_net = prune_agent.net_list[best_net_index]
-    wandb.log({"optimal_net_reward": Q_value_dict[0][best_net_index]}, step=epoch)
+    wandb.log({"optimal_net_reward": prune_agent.ReplayBuffer[best_net_index, 0]}, step=epoch)
     
-    logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
-    logging.info(f'Current new net Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
-    logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
     return best_generated_net
 
 def sample_trajectory(cur_step: int, 
@@ -238,8 +242,12 @@ def evaluate_best_new_net(original_net: nn.Module,
 
 def get_args():
     parser = argparse.ArgumentParser(description='Adaptively compress the given trained model under given dataset')
-    parser.add_argument('-net', type=str, default=None, help='the type of model to train')
-    parser.add_argument('-dataset', type=str, default=None, help='the dataset to train on')
+    parser.add_argument('-n', '--net', type=str, default=None, help='the type of model to train')
+    parser.add_argument('-nid', '--net_id', type=str, default=None, help='the id specific which orginal model to be compressed')
+    parser.add_argument('-d', '--dataset', type=str, default=None, help='the dataset to train on')
+    parser.add_argument('-r', '--resume', action='store_true', default=False, help='resume the previous target compression')
+    parser.add_argument('-reid', '--resume_id', type=int, default=None, help='the id specific previous compression that to be resumed')
+    parser.add_argument('-raid', '--random_seed', type=int, default=None, help='the random seed for the current new compression')
 
     args = parser.parse_args()
     check_args(args)
@@ -250,81 +258,138 @@ def check_args(args: argparse.Namespace):
     if args.net is None:
         raise TypeError(f"the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
     elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
-        raise TypeError(f"the specific model {args.net} is not supported, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
+        raise TypeError(f"the specific model {args.net} is not supported, please specify which original model to be compressed")
+    if args.net_id is None and args.resume == False:
+        raise TypeError(f"the specific model {args.net_id} should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
     if args.dataset is None:
         raise TypeError(f"the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
     elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
         raise TypeError(f"the specific dataset {args.dataset} is not supported, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
+    if args.resume == True and args.resume_id is None:
+        raise TypeError(f"the specific resume_id {args.resume_id} should be provided, please specify which compression to resume")
 
 
 if __name__ == '__main__':
-    start_time = int(time.time())
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     args = get_args()
-    setup_logging(experiment_id=start_time, net=args.net, dataset=args.dataset, action='compress')
+    if args.resume == True:
+        random_seed = args.resume_id
+    elif args.random_seed is not None:
+        random_seed = args.resume_id
+    else:
+        random_seed = int(time.time())
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    setup_logging(experiment_id=random_seed, net=args.net, dataset=args.dataset, action='compress')
     
     # reinitialize random seed
-    torch_set_random_seed(start_time)
-    logging.info(f'Start with random seed: {start_time}')
+    torch_set_random_seed(random_seed)
+    logging.info(f'Start with random seed: {random_seed}')
 
-    # process input arguments
     train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=args.dataset, pin_memory=True)
     net_class = get_net_class(net=args.net)
-    net = torch.load('models/vgg16_cifar100_Original_1717669735.pth').to(device)  # replace it with the model gained by train.py
+    
+    # initialize training parameter
+    loss_function = nn.CrossEntropyLoss()
 
-    # compute inital data
+    # initialize parameter to compute complexity of model
     if args.net == 'lenet5':
         input = torch.rand(1, 1, 32, 32).to(device)
     else:
         input = torch.rand(1, 3, 32, 32).to(device)
     custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
-    original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
-    Para_compression_ratio = 0.0
-    FLOPs_compression_ratio = 0.0
 
-    # initialize training parameter
-    loss_function = nn.CrossEntropyLoss()
 
-    # initialize reinforcement learning parameter
-    prune_distribution = torch.zeros(net.prune_choices_num)
-    for idx, layer_idx in enumerate(net.prune_choices):
-        if idx <= net.last_conv_layer_idx:
-            layer = net.conv_layers[layer_idx]
-            prune_distribution[idx] = layer.out_channels
-        else:
-            layer = net.linear_layers[layer_idx]
-            prune_distribution[idx] = layer.out_features
-    filter_num = torch.sum(prune_distribution)
-    prune_distribution = prune_distribution / filter_num
-    ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + net.prune_choices_num]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
-    prune_agent = Prune_agent(prune_distribution=prune_distribution, ReplayBuffer=ReplayBuffer, filter_num=filter_num)
-    logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
+    prev_epoch = 0
+    prev_reached_final_fine_tuning = False
 
-    # initialize compressing parameter
-    initial_protect_used = True
-    initial_top1_acc, _, _ = eval_network(target_net=net, target_eval_loader=test_loader, loss_function=loss_function)
-    cur_top1_acc = initial_top1_acc
-    wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=0)
-    for i in range(net.prune_choices_num):
-        wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
+
+    if args.resume:
+        net = torch.load(f'models/{args.net}_{args.dataset}_{args.resume_id}_temp.pth').to(device)
+        
+        # resume the previous compression
+        prev_checkpoint = torch.load(f"checkpoint/{args.net}_{args.dataset}_{args.resume_id}_checkpoint.pth")
+        prev_epoch = prev_checkpoint['epoch']
+        prev_reached_final_fine_tuning = prev_checkpoint['reached_final_fine_tuning']
+        
+        original_para_num = prev_checkpoint['original_para_num']
+        original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
+        Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
+        FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
+        
+        prune_agent = prev_checkpoint['prune_agent']
+        
+        initial_protect_used = prev_checkpoint['initial_protect_used']
+        best_acc = prev_checkpoint['best_acc']
+        cur_top1_acc = prev_checkpoint['cur_top1_acc']
+    else:
+        net = torch.load(f'models/{args.net}_{args.dataset}_{args.net_id}_original.pth').to(device)
+
+        # get complexity of original model
+        original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
+        Para_compression_ratio = 0.0
+        FLOPs_compression_ratio = 0.0
+
+        # initialize reinforcement learning parameter
+        prune_distribution = torch.zeros(net.prune_choices_num)
+        for idx, layer_idx in enumerate(net.prune_choices):
+            if idx <= net.last_conv_layer_idx:
+                layer = net.conv_layers[layer_idx]
+                prune_distribution[idx] = layer.out_channels
+            else:
+                layer = net.linear_layers[layer_idx]
+                prune_distribution[idx] = layer.out_features
+        filter_num = torch.sum(prune_distribution)
+        prune_distribution = prune_distribution / filter_num
+        ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + net.prune_choices_num]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
+        prune_agent = Prune_agent(prune_distribution=prune_distribution, ReplayBuffer=ReplayBuffer, filter_num=filter_num)
+        logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
+
+        # initialize compressing parameter
+        initial_protect_used = True
+        best_acc = 0
+        initial_top1_acc, _, _ = eval_network(target_net=net, target_eval_loader=test_loader, loss_function=loss_function)
+        cur_top1_acc = initial_top1_acc
+        wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=0)
+        for i in range(net.prune_choices_num):
+            wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
 
     
     for epoch in range(1, settings.C_COMPRESSION_EPOCH + 1):
+        if epoch <= prev_epoch or prev_reached_final_fine_tuning == True:
+            continue
+
         net = prune_architecture(net=net, prune_agent=prune_agent, epoch=epoch)
 
         if cur_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
-            torch.save(net, f'models/{args.net}_{args.dataset}_{start_time}_top1acc_{cur_top1_acc}_FLOPsCR_{FLOPs_compression_ratio}_paraCR_{Para_compression_ratio}.pth')
+            torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_compressed.pth')
         wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=epoch)
         for i in range(net.prune_choices_num):
             wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=epoch)
         logging.info(f'Epoch: {epoch}/{settings.C_COMPRESSION_EPOCH}, modification_num: {prune_agent.modification_num}, compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
+
+        # save checkpoint
+        checkpoint = {
+            'epoch': epoch,
+            'reached_final_fine_tuning': False,
+            'prune_agent': prune_agent,
+            'original_para_num': original_para_num,
+            'original_FLOPs_num': original_FLOPs_num,
+            'Para_compression_ratio': Para_compression_ratio,
+            'FLOPs_compression_ratio': FLOPs_compression_ratio,
+            'initial_protect_used': initial_protect_used,
+            'best_acc': best_acc,
+            'cur_top1_acc': cur_top1_acc
+        }
+        torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_temp.pth')
+        torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
     
     optimizer = optim.SGD(net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, settings.C_FT_EPOCH - 10, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
-    best_acc = 0
     cur_top1_acc = 0
     
     for epoch in range(1, settings.C_FT_EPOCH + 1):
+        if epoch <= prev_epoch:
+            continue
+
         train_loss = fine_tuning_network(target_net=net,target_optimizer=optimizer,target_train_loader=train_loader,loss_function=loss_function, epoch=epoch, final_ft=True)
         cur_top1_acc, _, _ = eval_network(target_net=net,target_eval_loader=test_loader,loss_function=loss_function)
         logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {cur_top1_acc}')
@@ -338,7 +403,19 @@ if __name__ == '__main__':
 
             if not os.path.isdir("models"):
                 os.mkdir("models")
-            torch.save(net, f'models/{args.net}_{args.dataset}_{start_time}_finished.pth')
-    
-    end_time = int(time.time())
-    logging.info(f'Compress process takes {(end_time - start_time) / 60} minutes')
+            torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_finished.pth')
+        
+        # save checkpoint
+        checkpoint = {
+            'epoch': epoch,
+            'reached_final_fine_tuning': False,
+            'prune_agent': prune_agent,
+            'original_para_num': original_para_num,
+            'original_FLOPs_num': original_FLOPs_num,
+            'Para_compression_ratio': Para_compression_ratio,
+            'FLOPs_compression_ratio': FLOPs_compression_ratio,
+            'initial_protect_used': initial_protect_used,
+            'best_acc': best_acc,
+            'cur_top1_acc': cur_top1_acc
+        }
+        torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
