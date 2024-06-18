@@ -16,26 +16,21 @@ from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_cust
                    get_dataloader, setup_logging, Prune_agent, torch_set_random_seed)
 
 
-def free_initial_weight(net: nn.Module):
-    # free all initial weights
-    for idx, layer_idx in enumerate(net.prune_choices):
-        if idx <= net.last_conv_layer_idx:
-            layer = net.conv_layers[layer_idx]
-        else:
-            layer = net.linear_layers[layer_idx]
-        layer.free_original_weight()
-
-
-def fine_tuning_network(target_net: nn.Module, 
-          target_optimizer: optim.Optimizer, 
-          target_train_loader: torch.utils.data.DataLoader, 
-          loss_function: nn.Module, 
-          epoch: int, 
-          final_ft: bool):
+def fine_tuning_network(teacher_net: nn.Module,
+                        student_net: nn.Module,
+                        target_optimizer: optim.Optimizer, 
+                        target_train_loader: torch.utils.data.DataLoader, 
+                        loss_function: nn.Module, 
+                        epoch: int, 
+                        T: float = 2,
+                        soft_loss_weight: float = 0.25, 
+                        stu_loss_weight: float = 0.75,
+                        fft: bool = False):
     
-    target_net.train()
+    teacher_net.eval()
+    student_net.train()
     train_loss = 0.0
-    if final_ft == True:
+    if fft == True:
         description = "Fine tuning final architecture"
         max_epoch = settings.C_FT_EPOCH
     else:
@@ -43,12 +38,20 @@ def fine_tuning_network(target_net: nn.Module,
         max_epoch = settings.C_DEV_NUM
     with tqdm(total=len(target_train_loader), desc=f'{description}: Epoch {epoch}/{max_epoch}', unit='batch', leave=False) as pbar:
         for _, (images, labels) in enumerate(target_train_loader):
-            images = images.to(device)
-            labels = labels.to(device)
+            images, labels = images.to(device), labels.to(device)
             
             target_optimizer.zero_grad()
-            outputs = target_net(images)
-            loss = loss_function(outputs, labels)
+            stu_outputs = student_net(images)
+            stu_loss = loss_function(stu_outputs, labels)
+
+            with torch.no_grad():
+                tch_outputs = teacher_net(images)
+            # soften the student output by applying softmax firstly and log() secondly to avoid overflow and improve efficiency, and teacher output softmax only
+            stu_outputs_softened = nn.functional.log_softmax(stu_outputs / T, dim=-1)
+            tch_outputs_softened = nn.functional.softmax(tch_outputs / T, dim=-1)
+            soft_loss = torch.sum(tch_outputs_softened * (tch_outputs_softened.log() - stu_outputs_softened)) / stu_outputs_softened.shape[0] * T ** 2
+
+            loss = soft_loss_weight * soft_loss + stu_loss_weight * stu_loss
             loss.backward()
             target_optimizer.step()
             train_loss += loss.item()
@@ -101,14 +104,20 @@ def get_optimal_architecture(original_net: nn.Module,
     
     torch.save(best_new_net, 'models/test_net.pth')
     # fine tuning best new architecture
-    optimizer = optim.SGD(best_new_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, settings.C_DEV_NUM - 5, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
+    FT_optimizer = optim.SGD(best_new_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
+    FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_DEV_NUM - 5, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     best_acc = 0.0
     for dev_epoch in range(1, settings.C_DEV_NUM + 1):
-        train_loss = fine_tuning_network(target_net=best_new_net, target_optimizer=optimizer, target_train_loader=train_loader, loss_function=loss_function, epoch=dev_epoch, final_ft=False)
+        train_loss = fine_tuning_network(teacher_net=teacher_net, 
+                                         student_net=best_new_net, 
+                                         target_optimizer=FT_optimizer, 
+                                         target_train_loader=train_loader, 
+                                         loss_function=loss_function, 
+                                         epoch=dev_epoch, 
+                                         fft=False)
         top1_acc, top5_acc, _ = eval_network(target_net=best_new_net, target_eval_loader=test_loader, loss_function=loss_function)
         logging.info(f"epoch: {dev_epoch}/{settings.C_DEV_NUM}, train_Loss: {train_loss}, top1_acc: {top1_acc}, top5_acc: {top5_acc}")
-        lr_scheduler.step()
+        FT_lr_scheduler.step()
 
         if best_acc < top1_acc:
             best_acc = top1_acc
@@ -133,6 +142,7 @@ def get_optimal_architecture(original_net: nn.Module,
 
 def get_best_generated_architecture(original_net: nn.Module,
                                     prune_agent: Prune_agent):
+    tolerance_time = settings.RL_LR_TOLERANCE
     for _ in range(1, prune_agent.lr_epoch + 1):
         # we only use the last updated net_list and Q_value_dict for fine tuning, and previous trajectory is used for updating prune distribution
         Q_value_dict = {}
@@ -144,14 +154,19 @@ def get_best_generated_architecture(original_net: nn.Module,
         logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
         logging.info(f'Current new net Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
         logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
-        print(prune_agent.prev_sampled_Q_value_mean)
-        print(torch.mean(Q_value_dict[0]))
+        logging.info(f'Previous Q value max: {prune_agent.cur_Q_value_max}')
+        logging.info(f'Current Q value max: {torch.max(Q_value_dict[0])}')
         # only update distribution when sampled trajectory is better
-        if torch.mean(Q_value_dict[0]) >= prune_agent.prev_sampled_Q_value_mean:
-            prune_agent.prev_sampled_Q_value_mean = torch.mean(Q_value_dict[0])
+        if (torch.max(Q_value_dict[0]) - prune_agent.cur_Q_value_max) / prune_agent.cur_Q_value_max <= settings.RL_REWARD_CHANGE_THRESHOLD and prune_agent.cur_Q_value_max != -1:
+            tolerance_time -= 1
+            if tolerance_time <= 0:
+                break
+        else:
+            prune_agent.cur_Q_value_max = torch.max(Q_value_dict[0])
             prune_distribution_change = prune_agent.update_prune_distribution(settings.RL_STEP_LENGTH, settings.RL_PROBABILITY_LOWER_BOUND, settings.RL_PPO_CLIP, settings.RL_PPO_ENABLE)
             logging.info(f"current prune probability distribution change: {prune_distribution_change}")
             logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
+            tolerance_time = settings.RL_LR_TOLERANCE
     
     # use epsilon-greedy exploration strategy
     if torch.rand(1).item() < settings.RL_GREEDY_EPSILON:
@@ -300,11 +315,12 @@ if __name__ == '__main__':
 
     prev_epoch = 0
     prev_reached_final_fine_tuning = False
-
+    prev_checkpoint = None
 
     if args.resume:
         net = torch.load(f'models/{args.net}_{args.dataset}_{args.resume_id}_temp.pth').to(device)
-        
+        teacher_net = torch.load(f'models/{args.net}_{args.dataset}_{args.resume_id}_teacher.pth').to(device)
+
         # resume the previous compression
         prev_checkpoint = torch.load(f"checkpoint/{args.net}_{args.dataset}_{args.resume_id}_checkpoint.pth")
         prev_epoch = prev_checkpoint['epoch']
@@ -319,9 +335,12 @@ if __name__ == '__main__':
         
         initial_protect_used = prev_checkpoint['initial_protect_used']
         best_acc = prev_checkpoint['best_acc']
+        initial_top1_acc = prev_checkpoint['initial_top1_acc']
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
         net = torch.load(f'models/{args.net}_{args.dataset}_{args.net_id}_original.pth').to(device)
+        teacher_net = copy.deepcopy(net).to(device)
+        torch.save(teacher_net, f'models/{args.net}_{args.dataset}_{random_seed}_teacher.pth')
 
         # get complexity of original model
         original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
@@ -354,7 +373,7 @@ if __name__ == '__main__':
 
     
     for epoch in range(1, settings.C_COMPRESSION_EPOCH + 1):
-        if epoch <= prev_epoch or prev_reached_final_fine_tuning == True:
+        if prev_reached_final_fine_tuning == True or epoch <= prev_epoch:
             continue
 
         net = prune_architecture(net=net, prune_agent=prune_agent, epoch=epoch)
@@ -377,25 +396,40 @@ if __name__ == '__main__':
             'FLOPs_compression_ratio': FLOPs_compression_ratio,
             'initial_protect_used': initial_protect_used,
             'best_acc': best_acc,
-            'cur_top1_acc': cur_top1_acc
+            'initial_top1_acc': initial_top1_acc,
+            'cur_top1_acc': cur_top1_acc,
+            'FFT_optimizer_state_dict': None,
+            'FFT_lr_scheduler_state_dict': None
         }
         torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_temp.pth')
         torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
     
-    optimizer = optim.SGD(net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, settings.C_FT_EPOCH - 10, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
+
+    FFT_optimizer = optim.SGD(net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
+    FFT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FFT_optimizer, settings.C_FT_EPOCH - 10, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     cur_top1_acc = 0
+    if args.resume:
+        if prev_checkpoint['FFT_optimizer_state_dict'] is not None:
+            FFT_optimizer.load_state_dict(prev_checkpoint['FFT_optimizer_state_dict'])
+            FFT_lr_scheduler.load_state_dict(prev_checkpoint['FFT_lr_scheduler_state_dict'])
+            cur_top1_acc = prev_checkpoint['cur_top1_acc']
     
     for epoch in range(1, settings.C_FT_EPOCH + 1):
-        if epoch <= prev_epoch:
+        if prev_reached_final_fine_tuning == True and epoch <= prev_epoch:
             continue
 
-        train_loss = fine_tuning_network(target_net=net,target_optimizer=optimizer,target_train_loader=train_loader,loss_function=loss_function, epoch=epoch, final_ft=True)
+        train_loss = fine_tuning_network(teacher_net=teacher_net,
+                                         student_net=net,
+                                         target_optimizer=FFT_optimizer,
+                                         target_train_loader=train_loader,
+                                         loss_function=loss_function, 
+                                         epoch=epoch, 
+                                         fft=True)
         cur_top1_acc, _, _ = eval_network(target_net=net,target_eval_loader=test_loader,loss_function=loss_function)
         logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {cur_top1_acc}')
         wandb.log({"overall_fine_tuning_train_loss": train_loss,"overall_fine_tuning_top1_acc": cur_top1_acc}, step=epoch+settings.C_COMPRESSION_EPOCH)
 
-        lr_scheduler.step()
+        FFT_lr_scheduler.step()
 
         # start to save best performance model after first training milestone
         if best_acc < cur_top1_acc:
@@ -408,7 +442,7 @@ if __name__ == '__main__':
         # save checkpoint
         checkpoint = {
             'epoch': epoch,
-            'reached_final_fine_tuning': False,
+            'reached_final_fine_tuning': True,
             'prune_agent': prune_agent,
             'original_para_num': original_para_num,
             'original_FLOPs_num': original_FLOPs_num,
@@ -416,6 +450,9 @@ if __name__ == '__main__':
             'FLOPs_compression_ratio': FLOPs_compression_ratio,
             'initial_protect_used': initial_protect_used,
             'best_acc': best_acc,
-            'cur_top1_acc': cur_top1_acc
+            'initial_top1_acc': initial_top1_acc,
+            'cur_top1_acc': cur_top1_acc,
+            'FFT_optimizer_state_dict': FFT_optimizer.state_dict(),
+            'FFT_lr_scheduler_state_dict': FFT_lr_scheduler.state_dict(),
         }
         torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")

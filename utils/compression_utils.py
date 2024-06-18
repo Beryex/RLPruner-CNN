@@ -20,7 +20,7 @@ class Prune_agent():
         self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
         self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
         self.lr_epoch = settings.RL_LR_EPOCH
-        self.prev_sampled_Q_value_mean = -1
+        self.cur_Q_value_max = -1
 
     def step(self, optimal_net_index: int, epoch: int):
         if optimal_net_index == 1:
@@ -29,7 +29,7 @@ class Prune_agent():
             self.Reward_cache = {}
             self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
             self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
-            self.prev_sampled_Q_value_mean = -1
+            self.cur_Q_value_max = -1
         else:
             self.cur_single_step_acc_threshold += 0.001
         # update modification_num using method similiar to CosineAnnealingLR

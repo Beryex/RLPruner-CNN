@@ -1,25 +1,13 @@
 import torch
 import torch.nn as nn
-import time
-import wandb
-import logging
 import argparse
 from thop import profile
 from models.vgg import Custom_Conv2d, Custom_Linear
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from utils import setup_logging, get_dataloader, count_custom_conv2d, count_custom_linear, torch_set_random_seed
+from utils import get_dataloader, count_custom_conv2d, count_custom_linear
 
-
-def free_initial_weight(net):
-    # free all initial weights
-    for idx, layer_idx in enumerate(net.prune_choices):
-        if idx <= net.last_conv_layer_idx:
-            layer = net.conv_layers[layer_idx]
-        else:
-            layer = net.linear_layers[layer_idx]
-        layer.free_original_weight()
 
 def get_tensor_memory(tensor):
     if tensor is None:
