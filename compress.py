@@ -16,7 +16,7 @@ from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_cust
                    get_dataloader, setup_logging, Prune_agent, torch_set_random_seed)
 
 
-def fine_tuning_network(teacher_net: nn.Module,
+def fine_tuning_network_knowledge_distillation(teacher_net: nn.Module,
                         student_net: nn.Module,
                         target_optimizer: optim.Optimizer, 
                         target_train_loader: torch.utils.data.DataLoader, 
@@ -108,13 +108,13 @@ def get_optimal_architecture(original_net: nn.Module,
     FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_DEV_NUM - 5, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     best_acc = 0.0
     for dev_epoch in range(1, settings.C_DEV_NUM + 1):
-        train_loss = fine_tuning_network(teacher_net=teacher_net, 
-                                         student_net=best_new_net, 
-                                         target_optimizer=FT_optimizer, 
-                                         target_train_loader=train_loader, 
-                                         loss_function=loss_function, 
-                                         epoch=dev_epoch, 
-                                         fft=False)
+        train_loss = fine_tuning_network_knowledge_distillation(teacher_net=teacher_net, 
+                                                                student_net=best_new_net, 
+                                                                target_optimizer=FT_optimizer, 
+                                                                target_train_loader=train_loader, 
+                                                                loss_function=loss_function, 
+                                                                epoch=dev_epoch, 
+                                                                fft=False)
         top1_acc, top5_acc, _ = eval_network(target_net=best_new_net, target_eval_loader=test_loader, loss_function=loss_function)
         logging.info(f"epoch: {dev_epoch}/{settings.C_DEV_NUM}, train_Loss: {train_loss}, top1_acc: {top1_acc}, top5_acc: {top5_acc}")
         FT_lr_scheduler.step()
@@ -418,13 +418,13 @@ if __name__ == '__main__':
         if prev_reached_final_fine_tuning == True and epoch <= prev_epoch:
             continue
 
-        train_loss = fine_tuning_network(teacher_net=teacher_net,
-                                         student_net=net,
-                                         target_optimizer=FFT_optimizer,
-                                         target_train_loader=train_loader,
-                                         loss_function=loss_function, 
-                                         epoch=epoch, 
-                                         fft=True)
+        train_loss = fine_tuning_network_knowledge_distillation(teacher_net=teacher_net,
+                                                                student_net=net,
+                                                                target_optimizer=FFT_optimizer,
+                                                                target_train_loader=train_loader,
+                                                                loss_function=loss_function, 
+                                                                epoch=epoch, 
+                                                                fft=True)
         cur_top1_acc, _, _ = eval_network(target_net=net,target_eval_loader=test_loader,loss_function=loss_function)
         logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {cur_top1_acc}')
         wandb.log({"overall_fine_tuning_train_loss": train_loss,"overall_fine_tuning_top1_acc": cur_top1_acc}, step=epoch+settings.C_COMPRESSION_EPOCH)
