@@ -132,3 +132,6 @@ if __name__ == '__main__':
         if best_acc < top1_acc:
             best_acc = top1_acc
             torch.save(net, f'models/{args.net}_{args.dataset}_Original_{random_seed}.pth')
+    
+    if wandb_available:
+        wandb.finish()

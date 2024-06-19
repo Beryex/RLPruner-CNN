@@ -468,3 +468,6 @@ if __name__ == '__main__':
             'FFT_lr_scheduler_state_dict': FFT_lr_scheduler.state_dict(),
         }
         torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
+    
+    if wandb_available:
+        wandb.finish()
