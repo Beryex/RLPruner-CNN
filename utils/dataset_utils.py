@@ -30,7 +30,7 @@ def get_dataloader(dataset: str,
         mnist_train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform_train)
         val_size = int(len(mnist_train_dataset) * val_proportion)
         train_size = len(mnist_train_dataset) - val_size
-        mnist_train_dataset, mnist_val_dataset = random_split(mnist_train_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(0))
+        mnist_train_dataset, mnist_val_dataset = random_split(mnist_train_dataset, [train_size, val_size])
         mnist_train_loader = DataLoader(mnist_train_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size, pin_memory=pin_memory)
         if val_size == 0:
             mnist_val_loader = None
@@ -59,7 +59,7 @@ def get_dataloader(dataset: str,
         cifar10_train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
         val_size = int(len(cifar10_train_dataset) * val_proportion)
         train_size = len(cifar10_train_dataset) - val_size
-        cifar10_train_dataset, cifar10_val_dataset = random_split(cifar10_train_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(0))
+        cifar10_train_dataset, cifar10_val_dataset = random_split(cifar10_train_dataset, [train_size, val_size])
         cifar10_train_loader = DataLoader(cifar10_train_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size, pin_memory=pin_memory)
         if val_size == 0:
             cifar10_val_loader = None
@@ -88,7 +88,7 @@ def get_dataloader(dataset: str,
         cifar100_train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
         val_size = int(len(cifar100_train_dataset) * val_proportion)
         train_size = len(cifar100_train_dataset) - val_size
-        cifar100_train_dataset, cifar100_val_dataset = random_split(cifar100_train_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(0))
+        cifar100_train_dataset, cifar100_val_dataset = random_split(cifar100_train_dataset, [train_size, val_size])
         cifar100_train_loader = DataLoader(cifar100_train_dataset, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size, pin_memory=pin_memory)
         if val_size == 0:
             cifar100_val_loader = None
