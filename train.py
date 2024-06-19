@@ -4,7 +4,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-import wandb
+try:
+    import wandb
+    wandb_available = True
+except ImportError:
+    wandb_available = False
 import logging
 
 from conf import settings
@@ -115,7 +119,8 @@ if __name__ == '__main__':
         train_loss = train_network(epoch)
         top1_acc, top5_acc, _ = eval_network(target_eval_loader=test_loader)
         logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}')
-        wandb.log({"epoch": epoch, "train_loss": train_loss,"top1_acc": top1_acc, "top5_acc": top5_acc})
+        if wandb_available:
+            wandb.log({"epoch": epoch, "train_loss": train_loss,"top1_acc": top1_acc, "top5_acc": top5_acc})
 
         lr_scheduler.step()
 

@@ -6,7 +6,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-import wandb
+try:
+    import wandb
+    wandb_available = True
+except ImportError:
+    wandb_available = False
 import logging
 import copy
 from thop import profile
@@ -176,7 +180,8 @@ def get_best_generated_architecture(original_net: nn.Module,
         best_net_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: Net {best_net_index} is the best new net')
     best_generated_net = prune_agent.net_list[best_net_index]
-    wandb.log({"optimal_net_reward": prune_agent.ReplayBuffer[best_net_index, 0]}, step=epoch)
+    if wandb_available:
+        wandb.log({"optimal_net_reward": prune_agent.ReplayBuffer[best_net_index, 0]}, step=epoch)
     
     return best_generated_net
 
@@ -249,8 +254,9 @@ def evaluate_best_new_net(original_net: nn.Module,
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
 
-    wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
-    wandb.log({"optimal_net_index": optimal_net_index}, step=epoch)
+    if wandb_available:
+        wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
+        wandb.log({"optimal_net_index": optimal_net_index}, step=epoch)
     logging.info(f'Generated Model Top1 Accuracy List: {[original_net_top1_acc, new_net_top1_acc]}, Top5 Accuracy List: {[original_net_top5_acc, new_net_top5_acc]}')
     return optimal_net, optimal_net_index
 
@@ -367,9 +373,10 @@ if __name__ == '__main__':
         best_acc = 0
         initial_top1_acc, _, _ = eval_network(target_net=net, target_eval_loader=test_loader, loss_function=loss_function)
         cur_top1_acc = initial_top1_acc
-        wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=0)
-        for i in range(net.prune_choices_num):
-            wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
+        if wandb_available:
+            wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=0)
+            for i in range(net.prune_choices_num):
+                wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
 
     
     for epoch in range(1, settings.C_COMPRESSION_EPOCH + 1):
@@ -380,9 +387,10 @@ if __name__ == '__main__':
 
         if cur_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
             torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_compressed.pth')
-        wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=epoch)
-        for i in range(net.prune_choices_num):
-            wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=epoch)
+        if wandb_available:
+            wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=epoch)
+            for i in range(net.prune_choices_num):
+                wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=epoch)
         logging.info(f'Epoch: {epoch}/{settings.C_COMPRESSION_EPOCH}, modification_num: {prune_agent.modification_num}, compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
 
         # save checkpoint
@@ -427,7 +435,8 @@ if __name__ == '__main__':
                                                                 fft=True)
         cur_top1_acc, _, _ = eval_network(target_net=net,target_eval_loader=test_loader,loss_function=loss_function)
         logging.info(f'Epoch: {epoch}, Train Loss: {train_loss},Top1 Accuracy: {cur_top1_acc}')
-        wandb.log({"overall_fine_tuning_train_loss": train_loss,"overall_fine_tuning_top1_acc": cur_top1_acc}, step=epoch+settings.C_COMPRESSION_EPOCH)
+        if wandb_available:
+            wandb.log({"overall_fine_tuning_train_loss": train_loss,"overall_fine_tuning_top1_acc": cur_top1_acc}, step=epoch+settings.C_COMPRESSION_EPOCH)
 
         FFT_lr_scheduler.step()
 
