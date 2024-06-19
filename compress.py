@@ -6,18 +6,21 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+import copy
+from thop import profile
 try:
     import wandb
     wandb_available = True
 except ImportError:
     wandb_available = False
 import logging
-import copy
-from thop import profile
 
 from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
                    get_dataloader, setup_logging, Prune_agent, torch_set_random_seed)
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.serialization")
 
 
 def fine_tuning_network_knowledge_distillation(teacher_net: nn.Module,

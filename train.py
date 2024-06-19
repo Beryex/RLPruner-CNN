@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+
 try:
     import wandb
     wandb_available = True
@@ -13,6 +14,9 @@ import logging
 
 from conf import settings
 from utils import get_network, get_dataloader, setup_logging, WarmUpLR, torch_set_random_seed
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.serialization")
 
 
 def train_network(epoch: int):
