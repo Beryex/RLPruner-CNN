@@ -131,7 +131,7 @@ if __name__ == '__main__':
         # start to save best performance model after first training milestone
         if best_acc < top1_acc:
             best_acc = top1_acc
-            torch.save(net, f'models/{args.net}_{args.dataset}_Original_{random_seed}.pth')
+            torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_original.pth')
     
     if wandb_available:
         wandb.finish()

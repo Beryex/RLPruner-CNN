@@ -34,7 +34,7 @@ class Prune_agent():
             self.cur_single_step_acc_threshold += 0.001
         # update modification_num using method similiar to CosineAnnealingLR
         if epoch < self.T_max:
-            self.modification_num = int(self.modification_min_num + (self.modification_max_num - self.modification_min_num) * 0.5 * (math.cos(torch.pi * epoch / self.T_max) + 1))
+            self.modification_num = int(self.modification_min_num + (self.modification_max_num - self.modification_min_num) * 0.5 * (math.cos(math.pi * epoch / self.T_max) + 1))
 
     def update_prune_distribution(self, step_length: float, probability_lower_bound: float, ppo_clip: float, ppo_enable: bool):
         ReplayBuffer = self.ReplayBuffer
