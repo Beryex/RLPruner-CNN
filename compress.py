@@ -329,18 +329,6 @@ if __name__ == '__main__':
         net_class = get_net_class(net=net_name)
         teacher_net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_original.pth').to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
-        
-        original_para_num = prev_checkpoint['original_para_num']
-        original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
-        Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
-        FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
-        
-        prune_agent = prev_checkpoint['prune_agent']
-        
-        initial_protect_used = prev_checkpoint['initial_protect_used']
-        best_acc = prev_checkpoint['best_acc']
-        initial_top1_acc = prev_checkpoint['initial_top1_acc']
-        cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
         net_name = args.net
         dataset_name = args.dataset
@@ -356,11 +344,33 @@ if __name__ == '__main__':
         teacher_net = copy.deepcopy(net).to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
 
+    # initialize parameter to compute complexity of model
+    if net_name == 'lenet5':
+        input = torch.rand(1, 1, 32, 32).to(device)
+    else:
+        input = torch.rand(1, 3, 32, 32).to(device)
+    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
+    
+    if args.resume:
+        # resume complexity of model
+        original_para_num = prev_checkpoint['original_para_num']
+        original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
+        Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
+        FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
+    else:
         # get complexity of original model
         original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
 
+    if args.resume:
+        # resume RL parameter
+        prune_agent = prev_checkpoint['prune_agent']
+        initial_protect_used = prev_checkpoint['initial_protect_used']
+        best_acc = prev_checkpoint['best_acc']
+        initial_top1_acc = prev_checkpoint['initial_top1_acc']
+        cur_top1_acc = prev_checkpoint['cur_top1_acc']
+    else:
         # initialize reinforcement learning parameter
         prune_distribution = torch.zeros(net.prune_choices_num)
         for idx, layer_idx in enumerate(net.prune_choices):
@@ -386,12 +396,6 @@ if __name__ == '__main__':
             for i in range(net.prune_choices_num):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
 
-    # initialize parameter to compute complexity of model
-    if net_name == 'lenet5':
-        input = torch.rand(1, 1, 32, 32).to(device)
-    else:
-        input = torch.rand(1, 3, 32, 32).to(device)
-    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
     
     for epoch in range(1, settings.C_COMPRESSION_EPOCH + 1):
         if prev_reached_final_fine_tuning == True or epoch <= prev_epoch:
