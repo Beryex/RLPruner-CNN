@@ -7,6 +7,8 @@ import torch.optim as optim
 from tqdm import tqdm
 import copy
 from thop import profile
+import random
+import numpy as np
 try:
     import wandb
     wandb_available = True
@@ -16,7 +18,7 @@ import logging
 
 from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
-                   get_dataloader, setup_logging, Prune_agent, torch_set_random_seed)
+                   get_dataloader, setup_logging, Prune_agent, torch_set_random_seed, torch_resume_random_seed)
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.serialization")
@@ -294,17 +296,11 @@ def check_args(args: argparse.Namespace):
 
 if __name__ == '__main__':
     args = get_args()
-    if args.resume == True:
-        random_seed = args.resume_id
-    elif args.random_seed is not None:
+    if args.random_seed is not None:
         random_seed = args.resume_id
     else:
         random_seed = int(time.time())
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    
-    # reinitialize random seed
-    torch_set_random_seed(random_seed)
-    logging.info(f'Start with random seed: {random_seed}')
     
     # initialize training parameter
     loss_function = nn.CrossEntropyLoss()
@@ -327,9 +323,15 @@ if __name__ == '__main__':
         prev_epoch = prev_checkpoint['epoch']
         prev_reached_final_fine_tuning = prev_checkpoint['reached_final_fine_tuning']
 
+        # resume random seed
+        torch_resume_random_seed(prev_checkpoint)
+        logging.info(f'Resume previous random state')
+
         net_name = prev_checkpoint['net_name']
         dataset_name = prev_checkpoint['dataset_name']
         setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+
+        # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_temp.pth').to(device)
         net_class = get_net_class(net=net_name)
         teacher_net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_original.pth').to(device)
@@ -347,9 +349,15 @@ if __name__ == '__main__':
         initial_top1_acc = prev_checkpoint['initial_top1_acc']
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
+        # reinitialize random seed
+        torch_set_random_seed(random_seed)
+        logging.info(f'Start with random seed: {random_seed}')
+
         net_name = args.net
         dataset_name = args.dataset
         setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+
+        # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.net_id}_original.pth').to(device)
         net_class = get_net_class(net=net_name)
         teacher_net = copy.deepcopy(net).to(device)
@@ -402,6 +410,7 @@ if __name__ == '__main__':
 
         # save checkpoint
         checkpoint = {
+            # compression parameter
             'epoch': epoch,
             'reached_final_fine_tuning': False,
             'net_name': net_name,
@@ -416,7 +425,14 @@ if __name__ == '__main__':
             'initial_top1_acc': initial_top1_acc,
             'cur_top1_acc': cur_top1_acc,
             'FFT_optimizer_state_dict': None,
-            'FFT_lr_scheduler_state_dict': None
+            'FFT_lr_scheduler_state_dict': None,
+
+            # random seed parameter
+            'random_state': random.getstate(),
+            'np_random_state': np.random.get_state(),
+            'torch_random_state': torch.get_rng_state(),
+            'cuda_random_state': torch.cuda.get_rng_state_all(),
+            'python_hash_seed': os.environ['PYTHONHASHSEED']
         }
         torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_temp.pth')
         torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
@@ -459,6 +475,7 @@ if __name__ == '__main__':
         
         # save checkpoint
         checkpoint = {
+            # compression parameter
             'epoch': epoch,
             'reached_final_fine_tuning': True,
             'net_name': net_name,
@@ -474,6 +491,13 @@ if __name__ == '__main__':
             'cur_top1_acc': cur_top1_acc,
             'FFT_optimizer_state_dict': FFT_optimizer.state_dict(),
             'FFT_lr_scheduler_state_dict': FFT_lr_scheduler.state_dict(),
+
+            # random seed parameter
+            'random_state': random.getstate(),
+            'np_random_state': np.random.get_state(),
+            'torch_random_state': torch.get_rng_state(),
+            'cuda_random_state': torch.cuda.get_rng_state_all(),
+            'python_hash_seed': os.environ['PYTHONHASHSEED']
         }
         torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
     

@@ -14,13 +14,22 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 
 
-def torch_set_random_seed(seed):
+def torch_set_random_seed(seed: int):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+def torch_resume_random_seed(prev_checkpoint: dict):
+    random.setstate(prev_checkpoint['random_state'])
+    os.environ['PYTHONHASHSEED'] = prev_checkpoint['python_hash_seed']
+    np.random.set_state(prev_checkpoint['np_random_state'])
+    torch.set_rng_state(prev_checkpoint['torch_random_state'])
+    torch.cuda.set_rng_state_all(prev_checkpoint['cuda_random_state'])
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
