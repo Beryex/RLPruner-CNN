@@ -323,13 +323,13 @@ if __name__ == '__main__':
         prev_epoch = prev_checkpoint['epoch']
         prev_reached_final_fine_tuning = prev_checkpoint['reached_final_fine_tuning']
 
-        # resume random seed
-        torch_resume_random_seed(prev_checkpoint)
-        logging.info(f'Resume previous random state')
-
         net_name = prev_checkpoint['net_name']
         dataset_name = prev_checkpoint['dataset_name']
         setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+
+        # resume random seed
+        torch_resume_random_seed(prev_checkpoint)
+        logging.info(f'Resume previous random state')
 
         # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_temp.pth').to(device)
@@ -349,13 +349,13 @@ if __name__ == '__main__':
         initial_top1_acc = prev_checkpoint['initial_top1_acc']
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
-        # reinitialize random seed
-        torch_set_random_seed(random_seed)
-        logging.info(f'Start with random seed: {random_seed}')
-
         net_name = args.net
         dataset_name = args.dataset
         setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+
+         # reinitialize random seed
+        torch_set_random_seed(random_seed)
+        logging.info(f'Start with random seed: {random_seed}')
 
         # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.net_id}_original.pth').to(device)
