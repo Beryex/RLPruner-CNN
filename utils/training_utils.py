@@ -79,10 +79,6 @@ def setup_logging(experiment_id: int,
                             logging.StreamHandler()
                         ])
 
-    logging.info(f'Logging setup complete for experiment number: {experiment_id}')
-    hyperparams_info = "\n".join(f"{key}={value}" for key, value in settings.__dict__.items())
-    logging.info(f"Experiment hyperparameters:\n{hyperparams_info}")
-
 def dice_coeff(input: Tensor, 
                target: Tensor, 
                reduce_batch_first: bool = False, 

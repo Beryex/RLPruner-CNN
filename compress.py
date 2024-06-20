@@ -333,6 +333,9 @@ if __name__ == '__main__':
         net_name = args.net
         dataset_name = args.dataset
         setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+        logging.info(f'Logging setup complete for experiment number: {random_seed}')
+        hyperparams_info = "\n".join(f"{key}={value}" for key, value in settings.__dict__.items())
+        logging.info(f"Experiment hyperparameters:\n{hyperparams_info}")
 
          # reinitialize random seed
         torch_set_random_seed(random_seed)
