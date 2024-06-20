@@ -306,21 +306,13 @@ if __name__ == '__main__':
     # initialize training parameter
     loss_function = nn.CrossEntropyLoss()
 
-    # initialize parameter to compute complexity of model
-    if args.net == 'lenet5':
-        input = torch.rand(1, 1, 32, 32).to(device)
-    else:
-        input = torch.rand(1, 3, 32, 32).to(device)
-    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
-
-
     prev_epoch = 0
     prev_reached_final_fine_tuning = False
     prev_checkpoint = None
 
     if args.resume:
         # resume the previous compression
-        prev_checkpoint = torch.load(f"checkpoint/{args.net}_{args.dataset}_{args.resume_id}_checkpoint.pth")
+        prev_checkpoint = torch.load(f"checkpoint/{args.resume_id}_checkpoint.pth")
         prev_epoch = prev_checkpoint['epoch']
         prev_reached_final_fine_tuning = prev_checkpoint['reached_final_fine_tuning']
 
@@ -394,6 +386,12 @@ if __name__ == '__main__':
             for i in range(net.prune_choices_num):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
 
+    # initialize parameter to compute complexity of model
+    if net_name == 'lenet5':
+        input = torch.rand(1, 1, 32, 32).to(device)
+    else:
+        input = torch.rand(1, 3, 32, 32).to(device)
+    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
     
     for epoch in range(1, settings.C_COMPRESSION_EPOCH + 1):
         if prev_reached_final_fine_tuning == True or epoch <= prev_epoch:
@@ -402,7 +400,7 @@ if __name__ == '__main__':
         net = prune_architecture(net=net, prune_agent=prune_agent, epoch=epoch)
 
         if cur_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
-            torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_compressed.pth')
+            torch.save(net, f'models/{net_name}_{dataset_name}_{random_seed}_compressed.pth')
         if wandb_available:
             wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=epoch)
             for i in range(net.prune_choices_num):
@@ -435,8 +433,8 @@ if __name__ == '__main__':
             'cuda_random_state': torch.cuda.get_rng_state_all(),
             'python_hash_seed': os.environ['PYTHONHASHSEED']
         }
-        torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_temp.pth')
-        torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
+        torch.save(net, f'models/{net_name}_{dataset_name}_{random_seed}_temp.pth')
+        torch.save(checkpoint, f"checkpoint/{random_seed}_checkpoint.pth")
     
 
     FFT_optimizer = optim.SGD(net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
@@ -472,7 +470,7 @@ if __name__ == '__main__':
 
             if not os.path.isdir("models"):
                 os.mkdir("models")
-            torch.save(net, f'models/{args.net}_{args.dataset}_{random_seed}_finished.pth')
+            torch.save(net, f'models/{net_name}_{dataset_name}_{random_seed}_finished.pth')
         
         # save checkpoint
         checkpoint = {
@@ -500,7 +498,8 @@ if __name__ == '__main__':
             'cuda_random_state': torch.cuda.get_rng_state_all(),
             'python_hash_seed': os.environ['PYTHONHASHSEED']
         }
-        torch.save(checkpoint, f"checkpoint/{args.net}_{args.dataset}_{random_seed}_checkpoint.pth")
+        torch.save(net, f'models/{net_name}_{dataset_name}_{random_seed}_temp.pth')
+        torch.save(checkpoint, f"checkpoint/{random_seed}_checkpoint.pth")
     
     if wandb_available:
         wandb.finish()
