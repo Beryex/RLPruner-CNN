@@ -280,17 +280,18 @@ def get_args():
     return args
 
 def check_args(args: argparse.Namespace):
-    if args.net is None and args.resume == False:
-        raise TypeError(f"the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-    elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
-        raise TypeError(f"the specific model {args.net} is not supported, please specify which original model to be compressed")
-    if args.net_id is None and args.resume == False:
-        raise TypeError(f"the specific model {args.net_id} should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-    if args.dataset is None and args.resume == False:
-        raise TypeError(f"the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
-    elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
-        raise TypeError(f"the specific dataset {args.dataset} is not supported, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
-    if args.resume == True and args.resume_id is None:
+    if args.resume == False:
+        if args.net is None:
+            raise TypeError(f"the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
+        elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
+            raise TypeError(f"the specific model {args.net} is not supported, please specify which original model to be compressed")
+        if args.net_id is None:
+            raise TypeError(f"the specific model {args.net_id} should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
+        if args.dataset is None:
+            raise TypeError(f"the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
+        elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
+            raise TypeError(f"the specific dataset {args.dataset} is not supported, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
+    elif args.resume_id is None:
         raise TypeError(f"the specific resume_id {args.resume_id} should be provided, please specify which compression to resume")
 
 
