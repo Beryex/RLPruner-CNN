@@ -269,8 +269,8 @@ def get_args():
     parser.add_argument('-nid', '--net_id', type=str, default=None, help='the id specific which orginal model to be compressed')
     parser.add_argument('-d', '--dataset', type=str, default=None, help='the dataset to train on')
     parser.add_argument('-r', '--resume', action='store_true', default=False, help='resume the previous target compression')
-    parser.add_argument('-reid', '--resume_id', type=int, default=None, help='the id specific previous compression that to be resumed')
-    parser.add_argument('-raid', '--random_seed', type=int, default=None, help='the random seed for the current new compression')
+    parser.add_argument('-rid', '--resume_id', type=int, default=None, help='the id specific previous compression that to be resumed')
+    parser.add_argument('-rs', '--random_seed', type=int, default=None, help='the random seed for the current new compression')
 
     args = parser.parse_args()
     check_args(args)
@@ -278,13 +278,13 @@ def get_args():
     return args
 
 def check_args(args: argparse.Namespace):
-    if args.net is None:
+    if args.net is None and args.resume == False:
         raise TypeError(f"the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
     elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
         raise TypeError(f"the specific model {args.net} is not supported, please specify which original model to be compressed")
     if args.net_id is None and args.resume == False:
         raise TypeError(f"the specific model {args.net_id} should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-    if args.dataset is None:
+    if args.dataset is None and args.resume == False:
         raise TypeError(f"the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
     elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
         raise TypeError(f"the specific dataset {args.dataset} is not supported, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
@@ -301,14 +301,10 @@ if __name__ == '__main__':
     else:
         random_seed = int(time.time())
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    setup_logging(experiment_id=random_seed, net=args.net, dataset=args.dataset, action='compress')
     
     # reinitialize random seed
     torch_set_random_seed(random_seed)
     logging.info(f'Start with random seed: {random_seed}')
-
-    train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=args.dataset, pin_memory=True)
-    net_class = get_net_class(net=args.net)
     
     # initialize training parameter
     loss_function = nn.CrossEntropyLoss()
@@ -326,13 +322,18 @@ if __name__ == '__main__':
     prev_checkpoint = None
 
     if args.resume:
-        net = torch.load(f'models/{args.net}_{args.dataset}_{args.resume_id}_temp.pth').to(device)
-        teacher_net = torch.load(f'models/{args.net}_{args.dataset}_{args.resume_id}_teacher.pth').to(device)
-
         # resume the previous compression
         prev_checkpoint = torch.load(f"checkpoint/{args.net}_{args.dataset}_{args.resume_id}_checkpoint.pth")
         prev_epoch = prev_checkpoint['epoch']
         prev_reached_final_fine_tuning = prev_checkpoint['reached_final_fine_tuning']
+
+        net_name = prev_checkpoint['net_name']
+        dataset_name = prev_checkpoint['dataset_name']
+        setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+        net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_temp.pth').to(device)
+        net_class = get_net_class(net=net_name)
+        teacher_net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_original.pth').to(device)
+        train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
         
         original_para_num = prev_checkpoint['original_para_num']
         original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
@@ -346,9 +347,13 @@ if __name__ == '__main__':
         initial_top1_acc = prev_checkpoint['initial_top1_acc']
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
-        net = torch.load(f'models/{args.net}_{args.dataset}_{args.net_id}_original.pth').to(device)
+        net_name = args.net
+        dataset_name = args.dataset
+        setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+        net = torch.load(f'models/{net_name}_{dataset_name}_{args.net_id}_original.pth').to(device)
+        net_class = get_net_class(net=net_name)
         teacher_net = copy.deepcopy(net).to(device)
-        torch.save(teacher_net, f'models/{args.net}_{args.dataset}_{random_seed}_teacher.pth')
+        train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
 
         # get complexity of original model
         original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
@@ -399,6 +404,8 @@ if __name__ == '__main__':
         checkpoint = {
             'epoch': epoch,
             'reached_final_fine_tuning': False,
+            'net_name': net_name,
+            'dataset_name': dataset_name,
             'prune_agent': prune_agent,
             'original_para_num': original_para_num,
             'original_FLOPs_num': original_FLOPs_num,
@@ -454,6 +461,8 @@ if __name__ == '__main__':
         checkpoint = {
             'epoch': epoch,
             'reached_final_fine_tuning': True,
+            'net_name': net_name,
+            'dataset_name': dataset_name,
             'prune_agent': prune_agent,
             'original_para_num': original_para_num,
             'original_FLOPs_num': original_FLOPs_num,
