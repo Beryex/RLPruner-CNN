@@ -297,8 +297,10 @@ def check_args(args: argparse.Namespace):
 
 if __name__ == '__main__':
     args = get_args()
-    if args.random_seed is not None:
+    if args.resume_id is not None:
         random_seed = args.resume_id
+    elif args.random_seed is not None:
+        random_seed = args.random_seed
     else:
         random_seed = int(time.time())
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
