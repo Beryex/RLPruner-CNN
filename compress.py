@@ -238,7 +238,7 @@ def evaluate_best_new_net(original_net: nn.Module,
     original_net_top1_acc, original_net_top5_acc, _ = eval_network(target_net=original_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
     new_net_top1_acc, new_net_top5_acc, _ = eval_network(target_net=best_new_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
     
-    '''global initial_protect_used
+    global initial_protect_used
     global cur_top1_acc
     if initial_protect_used == True:
         initial_protect_used = False
@@ -255,10 +255,7 @@ def evaluate_best_new_net(original_net: nn.Module,
         optimal_net = best_new_net
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
-        logging.info('Generated net wins')'''
-    optimal_net = best_new_net
-    optimal_net_index = 1
-    logging.info('Generated net wins')
+        logging.info('Generated net wins')
 
     if wandb_available:
         wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
