@@ -31,7 +31,7 @@ class Prune_agent():
             self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
             self.cur_Q_value_max = -1
         else:
-            self.cur_single_step_acc_threshold += 0.001
+            self.cur_single_step_acc_threshold += 0.01
         # update modification_num using method similiar to CosineAnnealingLR
         if epoch < self.T_max:
             self.modification_num = int(self.modification_min_num + (self.modification_max_num - self.modification_min_num) * 0.5 * (math.cos(math.pi * epoch / self.T_max) + 1))

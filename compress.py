@@ -110,8 +110,7 @@ def get_optimal_architecture(original_net: nn.Module,
     # generate architecture
     best_new_net = get_best_generated_architecture(original_net=original_net, prune_agent=prune_agent)
     
-    torch.save(best_new_net, 'models/test_net.pth')
-    # fine tuning best new architecture
+    '''# fine tuning best new architecture
     FT_optimizer = optim.SGD(best_new_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
     FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_DEV_NUM - 5, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     best_acc = 0.0
@@ -130,7 +129,7 @@ def get_optimal_architecture(original_net: nn.Module,
         if best_acc < top1_acc:
             best_acc = top1_acc
             torch.save(best_new_net, f'models/temporary_net.pth')
-    best_new_net = torch.load('models/temporary_net.pth').to(device)
+    best_new_net = torch.load('models/temporary_net.pth').to(device)'''
     
     # compare best_new_net with original net
     optimal_net, optimal_net_index = evaluate_best_new_net(original_net=original_net, best_new_net=best_new_net, target_eval_loader=test_loader, prune_agent=prune_agent)
@@ -165,7 +164,7 @@ def get_best_generated_architecture(original_net: nn.Module,
         logging.info(f'Previous Q value max: {prune_agent.cur_Q_value_max}')
         logging.info(f'Current Q value max: {torch.max(Q_value_dict[0])}')
         # only update distribution when sampled trajectory is better
-        if (torch.max(Q_value_dict[0]) - prune_agent.cur_Q_value_max) / prune_agent.cur_Q_value_max <= settings.RL_REWARD_CHANGE_THRESHOLD and prune_agent.cur_Q_value_max != -1:
+        if torch.max(Q_value_dict[0]) - prune_agent.cur_Q_value_max <= settings.RL_REWARD_CHANGE_THRESHOLD and prune_agent.cur_Q_value_max != -1:
             tolerance_time -= 1
             if tolerance_time <= 0:
                 break
@@ -239,7 +238,7 @@ def evaluate_best_new_net(original_net: nn.Module,
     original_net_top1_acc, original_net_top5_acc, _ = eval_network(target_net=original_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
     new_net_top1_acc, new_net_top5_acc, _ = eval_network(target_net=best_new_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
     
-    global initial_protect_used
+    '''global initial_protect_used
     global cur_top1_acc
     if initial_protect_used == True:
         initial_protect_used = False
@@ -256,7 +255,10 @@ def evaluate_best_new_net(original_net: nn.Module,
         optimal_net = best_new_net
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
-        logging.info('Generated net wins')
+        logging.info('Generated net wins')'''
+    optimal_net = best_new_net
+    optimal_net_index = 1
+    logging.info('Generated net wins')
 
     if wandb_available:
         wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
