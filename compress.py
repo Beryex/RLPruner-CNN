@@ -164,7 +164,7 @@ def get_best_generated_architecture(original_net: nn.Module,
         logging.info(f'Previous Q value max: {prune_agent.cur_Q_value_max}')
         logging.info(f'Current Q value max: {torch.max(Q_value_dict[0])}')
         # only update distribution when sampled trajectory is better
-        if torch.max(Q_value_dict[0]) - prune_agent.cur_Q_value_max <= settings.RL_REWARD_CHANGE_THRESHOLD and prune_agent.cur_Q_value_max != -1:
+        if (torch.max(Q_value_dict[0]) - prune_agent.cur_Q_value_max) / prune_agent.cur_Q_value_max <= settings.RL_REWARD_CHANGE_THRESHOLD and prune_agent.cur_Q_value_max != -1:
             tolerance_time -= 1
             if tolerance_time <= 0:
                 break
@@ -246,7 +246,7 @@ def evaluate_best_new_net(original_net: nn.Module,
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
-    elif original_net_top1_acc - new_net_top1_acc > prune_agent.cur_single_step_acc_threshold:
+    elif (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc > prune_agent.cur_single_step_acc_threshold:
         optimal_net = original_net
         optimal_net_index = 0
         cur_top1_acc = original_net_top1_acc
