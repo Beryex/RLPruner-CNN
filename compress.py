@@ -330,7 +330,6 @@ if __name__ == '__main__':
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_temp.pth').to(device)
         net_class = get_net_class(net=net_name)
         teacher_id = prev_checkpoint['teacher_id']
-        teacher_id = 1718771151
         teacher_net = torch.load(f'models/{net_name}_{dataset_name}_{teacher_id}_original.pth').to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
     else:
