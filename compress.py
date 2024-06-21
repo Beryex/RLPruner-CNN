@@ -247,7 +247,7 @@ def evaluate_best_new_net(original_net: nn.Module,
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
-    elif (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc > prune_agent.cur_single_step_acc_threshold:
+    elif original_net_top1_acc - new_net_top1_acc > prune_agent.cur_single_step_acc_threshold:
         optimal_net = original_net
         optimal_net_index = 0
         cur_top1_acc = original_net_top1_acc
