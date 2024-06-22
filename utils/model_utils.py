@@ -82,6 +82,8 @@ class Custom_Conv2d(nn.Module):
     
     def decre_input(self, 
                     target_kernel: int):
+        if target_kernel is None:
+            return
         with torch.no_grad():
             kept_indices = [i for i in range(self.in_channels) if i != target_kernel]
             self.weight.data = self.weight.data[:, kept_indices, :, :]
