@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-from utils import Custom_Conv2d, Custom_Linear
+from utils import Custom_Conv2d, Custom_Linear, Prune_agent
 
 class Inception(nn.Module):
     def __init__(self, input_channels: int, n1x1: int, n3x3_reduce: int, n3x3: int, n5x5_reduce: int, n5x5: int, pool_proj: int):
@@ -55,76 +55,74 @@ class Inception(nn.Module):
             nn.ReLU(inplace=True)
         )
 
+        self.prune_choices_num = 7
+
     def forward(self, x: Tensor):
         return torch.cat([self.b1(x), self.b2(x), self.b3(x), self.b4(x)], dim=1)
     
-    def prune_inception(self):
-        branch_choices = torch.tensor([1, 2, 3, 4])
-        target_branch = torch.randint(0, len(branch_choices), (1,)).item()
-        target_branch = branch_choices[target_branch]
-        if target_branch == 1:
-            target_branch = self.b1
-            target_layer = 0
-        elif target_branch == 2:
-            target_branch = self.b2
-            layer_choices = torch.tensor([0, 3])
-            target_layer = torch.randint(0, len(layer_choices), (1,)).item()
-            target_layer = layer_choices[target_layer]
-        elif target_branch == 3:
-            target_branch = self.b3
-            layer_choices = torch.tensor([0, 3, 6])
-            target_layer = torch.randint(0, len(layer_choices), (1,)).item()
-            target_layer = layer_choices[target_layer]
-        elif target_branch == 4:
-            target_branch = self.b4
-            target_layer = 1
-        
-        # prune target branch
-        new_conv1_kernel_num = target_branch[target_layer].out_channels - 1
-        if new_conv1_kernel_num == 0:
-            return None, None
-        if target_layer >= 3:
-            new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, padding=1, bias=False)
-        else:
-            new_conv1 = nn.Conv2d(target_branch[target_layer].in_channels, new_conv1_kernel_num, kernel_size=target_branch[target_layer].kernel_size, bias=False)
-        weight_variances = torch.var(target_branch[target_layer].weight.data, dim = [1, 2, 3])
-        target_kernel = torch.argmin(weight_variances).item()
-        with torch.no_grad():
-            new_conv1.weight.data = torch.cat([target_branch[target_layer].weight.data[:target_kernel], target_branch[target_layer].weight.data[target_kernel+1:]], dim=0)
-        target_branch[target_layer] = new_conv1
+    def get_prune_distribution_and_filter_num(self):
+        prune_distribution = torch.zeros(self.prune_choices_num)
+        prune_distribution[0] = self.b1[0].out_channels
+        prune_distribution[1] = self.b2[0].out_channels
+        prune_distribution[2] = self.b2[3].out_channels
+        prune_distribution[3] = self.b3[0].out_channels
+        prune_distribution[4] = self.b3[3].out_channels
+        prune_distribution[5] = self.b3[6].out_channels
+        prune_distribution[6] = self.b4[1].out_channels
+        filter_num = torch.sum(prune_distribution)
+        prune_distribution = prune_distribution / filter_num
+        return prune_distribution, filter_num
 
-        new_bn1 = nn.BatchNorm2d(new_conv1_kernel_num)
-        with torch.no_grad():
-            kept_indices = [i for i in range(target_branch[target_layer + 1].num_features) if i != target_kernel]
-            new_bn1.weight.data = target_branch[target_layer + 1].weight.data[kept_indices]
-            new_bn1.bias.data = target_branch[target_layer + 1].bias.data[kept_indices]
-            new_bn1.running_mean = target_branch[target_layer + 1].running_mean[kept_indices]
-            new_bn1.running_var = target_branch[target_layer + 1].running_var[kept_indices]
-        target_branch[target_layer + 1] = new_bn1
-        if target_branch == self.b1:
+    def prune_filter_inception(self, layer_id: int):
+        target_branch = None
+        # prune kernel
+        if layer_id == 0:
+            target_kernel = self.b1[0].prune_filter()
+            target_bn = self.b1[1]
             self.branch1_out -= 1
-            return 1, target_kernel
-        elif target_branch == self.b2 and target_layer == 3:
+            target_branch = 1
+        elif layer_id == 1:
+            target_kernel = self.b2[0].prune_filter()
+            target_bn = self.b2[1]
+            self.b2[3].decre_input(target_kernel)
+        elif layer_id == 2:
+            target_kernel = self.b2[3].prune_filter()
+            target_bn = self.b2[4]
             self.branch2_out -= 1
-            return 2, target_kernel
-        elif target_branch == self.b3 and target_layer == 6:
+            target_branch = 2
+        elif layer_id == 3:
+            target_kernel = self.b3[0].prune_filter()
+            target_bn = self.b3[1]
+            self.b3[3].decre_input(target_kernel)
+        elif layer_id == 4:
+            target_kernel = self.b3[3].prune_filter()
+            target_bn = self.b3[4]
+            self.b3[6].decre_input(target_kernel)
+        elif layer_id == 5:
+            target_kernel = self.b3[6].prune_filter()
+            target_bn = self.b3[7]
             self.branch3_out -= 1
-            return 3, target_kernel
-        elif target_branch == self.b4:
-            self.branch4_out -= 1
-            return 4, target_kernel
+            target_branch = 3
         else:
-            # else, we need to decrement next conv layer's input inside inception
-            if target_layer + 3 >= 3:
-                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, padding=1, bias=False)
-            else:
-                new_conv2 = nn.Conv2d(target_branch[target_layer + 3].in_channels - 1, target_branch[target_layer + 3].out_channels, kernel_size=target_branch[target_layer + 3].kernel_size, bias=False)
-            with torch.no_grad():
-                kept_indices = [i for i in range(target_branch[target_layer + 3].in_channels) if i != target_kernel]
-                new_conv2.weight.data = target_branch[target_layer + 3].weight.data[:, kept_indices, :, :]
-            target_branch[target_layer + 3] = new_conv2
-            return None, target_kernel
-
+            target_kernel = self.b4[1].prune_filter()
+            target_bn = self.b4[2]
+            self.branch4_out -= 1
+            target_branch = 4
+        if target_kernel is None:
+            return None, None
+        
+        # update following BN layer
+        with torch.no_grad():
+            kept_indices = [i for i in range(target_bn.num_features) if i != target_kernel]
+            target_bn.weight.data = target_bn.weight.data[kept_indices]
+            target_bn.bias.data = target_bn.bias.data[kept_indices]
+            target_bn.running_mean = target_bn.running_mean[kept_indices]
+            target_bn.running_var = target_bn.running_var[kept_indices]
+        target_bn.num_features -= 1
+        if target_bn.num_features != target_bn.weight.shape[0]:
+            raise ValueError(f'BatchNorm layer number_features {target_bn.num_features} and weight dimension {target_bn.weight.shape[0]} mismath')
+        
+        return target_branch, target_kernel
 
 class GoogleNet(nn.Module):
     def __init__(self, in_channels=3, num_class=100):
@@ -157,34 +155,43 @@ class GoogleNet(nn.Module):
 
         #input feature size: 8*8*1024
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout2d(p=0.4)
-        self.linear = nn.Linear(1024, num_class)
+        self.dropout = nn.Dropout2d()
+        self.linear = Custom_Linear(1024, num_class)
+
+        self.prune_choices_num = 67
 
     def forward(self, x):
         x = self.prelayer(x)
         x = self.maxpool(x)
         x = self.a3(x)
         x = self.b3(x)
-
         x = self.maxpool(x)
-
         x = self.a4(x)
         x = self.b4(x)
         x = self.c4(x)
         x = self.d4(x)
         x = self.e4(x)
-
         x = self.maxpool(x)
-
         x = self.a5(x)
         x = self.b5(x)
-
         x = self.avgpool(x)
         x = self.dropout(x)
         x = x.view(x.size()[0], -1)
         x = self.linear(x)
-
         return x
+    
+    def get_prune_distribution_and_filter_num(self):
+        prune_distribution = torch()
+        for idx, layer_idx in enumerate(self.prune_choices):
+            if idx <= self.last_conv_layer_idx:
+                layer = self.conv_layers[layer_idx]
+                prune_distribution[idx] = layer.out_channels
+            else:
+                layer = self.linear_layers[layer_idx]
+                prune_distribution[idx] = layer.out_features
+        filter_num = torch.sum(prune_distribution)
+        prune_distribution = prune_distribution / filter_num
+        return prune_distribution, filter_num
     
     def update_architecture(self, modification_num):
         update_times = int(modification_num + 1)
@@ -193,11 +200,6 @@ class GoogleNet(nn.Module):
                 self.prune_inception()
             else:
                 self.prune_inception()
-        if torch.rand(1).item() < 0:
-            if torch.rand(1).item() < 0.05:
-                self.change_activation_function()
-            else:
-                self.change_inception_activation_function()
     
     def prune_inception(self):
         target_branch = self.prelayer
@@ -337,42 +339,3 @@ class GoogleNet(nn.Module):
                 new_fc1.bias.data = self.linear.bias.data
             self.linear = new_fc1
     
-    def change_activation_function(self):
-        target_branch = self.prelayer
-        layer_choices = torch.tensor([2, 5, 8])
-        target_layer = torch.randint(0, len(layer_choices), (1,)).item()
-        target_layer = layer_choices[target_layer]
-        
-        p1 = torch.rand(1).item()
-        if p1 < 0.2:
-            target_branch[target_layer] = torch.nn.ReLU(inplace=True)
-        elif p1 < 0.4:
-            target_branch[target_layer] = torch.nn.Tanh()
-        elif p1 < 0.6:
-            target_branch[target_layer] = torch.nn.LeakyReLU(inplace=True)
-        elif p1 < 0.8:
-            target_branch[target_layer] = torch.nn.Sigmoid()
-        else:
-            target_branch[target_layer] = torch.nn.ELU(inplace=True)
-
-    def change_inception_activation_function(self):
-        target_inception = torch.randint(0, 9, (1,)).item()
-        if target_inception == 0:
-            target_inception = self.a3
-        elif target_inception == 1:
-            target_inception = self.b3
-        elif target_inception == 2:
-            target_inception = self.a4
-        elif target_inception == 3:
-            target_inception = self.b4
-        elif target_inception == 4:
-            target_inception = self.c4
-        elif target_inception == 5:
-            target_inception = self.d4
-        elif target_inception == 6:
-            target_inception = self.e4
-        elif target_inception == 7:
-            target_inception = self.a5
-        else:
-            target_inception = self.b5
-        target_inception.change_activation_function()

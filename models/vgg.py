@@ -77,6 +77,18 @@ class VGG16(nn.Module):
         x = self.linear_layers(x)
         return x
 
+    def get_prune_distribution_and_filter_num(self):
+        prune_distribution = torch.zeros(self.prune_choices_num)
+        for idx, layer_idx in enumerate(self.prune_choices):
+            if idx <= self.last_conv_layer_idx:
+                layer = self.conv_layers[layer_idx]
+                prune_distribution[idx] = layer.out_channels
+            else:
+                layer = self.linear_layers[layer_idx]
+                prune_distribution[idx] = layer.out_features
+        filter_num = torch.sum(prune_distribution)
+        prune_distribution = prune_distribution / filter_num
+        return prune_distribution, filter_num
 
     def update_architecture(self, 
                             prune_agent: Prune_agent,
@@ -100,13 +112,13 @@ class VGG16(nn.Module):
 
 
     def prune_filter_conv(self, 
-                   target_layer: int):
+                          target_layer: int):
         # prune kernel
         target_kernel = self.conv_layers[target_layer].prune_filter()
         if target_kernel is None:
             return
 
-        # update bn1
+        # update following BN layer
         target_bn = self.conv_layers[target_layer + 1]
         with torch.no_grad():
             kept_indices = [i for i in range(target_bn.num_features) if i != target_kernel]
@@ -118,6 +130,7 @@ class VGG16(nn.Module):
         if target_bn.num_features != target_bn.weight.shape[0]:
             raise ValueError(f'BatchNorm layer number_features {target_bn.num_features} and weight dimension {target_bn.weight.shape[0]} mismath')
 
+        # update next layer input
         if target_layer < self.prune_choices[self.last_conv_layer_idx]:
             target_layer += 1
             while (not isinstance(self.conv_layers[target_layer], Custom_Conv2d)):
@@ -132,7 +145,7 @@ class VGG16(nn.Module):
             self.linear_layers[0].decre_input(new_in_features, start_index, end_index)
 
     def prune_filter_linear(self, 
-                     target_layer: int):
+                            target_layer: int):
         target_neuron = self.linear_layers[target_layer].prune_filter()
         if target_neuron is None:
             return

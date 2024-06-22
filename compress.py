@@ -378,16 +378,7 @@ if __name__ == '__main__':
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
         # initialize reinforcement learning parameter
-        prune_distribution = torch.zeros(net.prune_choices_num)
-        for idx, layer_idx in enumerate(net.prune_choices):
-            if idx <= net.last_conv_layer_idx:
-                layer = net.conv_layers[layer_idx]
-                prune_distribution[idx] = layer.out_channels
-            else:
-                layer = net.linear_layers[layer_idx]
-                prune_distribution[idx] = layer.out_features
-        filter_num = torch.sum(prune_distribution)
-        prune_distribution = prune_distribution / filter_num
+        prune_distribution, filter_num = net.get_prune_distribution_and_filter_num()
         ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + net.prune_choices_num]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
         prune_agent = Prune_agent(prune_distribution=prune_distribution, ReplayBuffer=ReplayBuffer, filter_num=filter_num)
         logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
