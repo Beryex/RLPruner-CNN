@@ -306,11 +306,6 @@ if __name__ == '__main__':
         random_seed = int(time.time())
         experiment_id = random_seed
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-    if not args.resume:
-        # reinitialize random seed
-        torch_set_random_seed(random_seed)
-        logging.info(f'Start with random seed: {random_seed}')
     
     # initialize training parameter
     loss_function = nn.CrossEntropyLoss()
@@ -342,6 +337,10 @@ if __name__ == '__main__':
         logging.info(f'Logging setup complete for experiment number: {random_seed}')
         hyperparams_info = "\n".join(f"{key}={value}" for key, value in settings.__dict__.items())
         logging.info(f"Experiment hyperparameters:\n{hyperparams_info}")
+
+        # reinitialize random seed
+        torch_set_random_seed(random_seed)
+        logging.info(f'Start with random seed: {random_seed}')
 
         # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.net_id}_original.pth').to(device)
