@@ -112,7 +112,7 @@ def get_optimal_architecture(original_net: nn.Module,
     
     # fine tuning best new architecture
     FT_optimizer = optim.SGD(best_new_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
-    FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_DEV_NUM - 5, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
+    FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_DEV_NUM, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     best_acc = 0.0
     for dev_epoch in range(1, settings.C_DEV_NUM + 1):
         train_loss = fine_tuning_network_knowledge_distillation(teacher_net=teacher_net, 
@@ -296,8 +296,12 @@ def check_args(args: argparse.Namespace):
 
 if __name__ == '__main__':
     args = get_args()
+    prev_checkpoint = None
+    if args.resume:
+        prev_checkpoint = torch.load(f"checkpoint/{args.resume_id}_checkpoint.pth")
+
     if args.resume_id is not None:
-        random_seed = args.resume_id
+        random_seed = prev_checkpoint['random_seed']
         experiment_id = args.resume_id
     elif args.random_seed is not None:
         random_seed = args.random_seed
@@ -312,11 +316,9 @@ if __name__ == '__main__':
 
     prev_epoch = 0
     prev_reached_final_fine_tuning = False
-    prev_checkpoint = None
 
     if args.resume:
         # resume the previous compression
-        prev_checkpoint = torch.load(f"checkpoint/{args.resume_id}_checkpoint.pth")
         prev_epoch = prev_checkpoint['epoch']
         prev_reached_final_fine_tuning = prev_checkpoint['reached_final_fine_tuning']
 
@@ -325,7 +327,7 @@ if __name__ == '__main__':
         setup_logging(experiment_id=experiment_id, net=net_name, dataset=dataset_name, action='compress')
 
         # get net and dataset
-        net = torch.load(f'models/{net_name}_{dataset_name}_{args.resume_id}_temp.pth').to(device)
+        net = torch.load(f'models/{net_name}_{dataset_name}_{random_seed}_temp.pth').to(device)
         net_class = get_net_class(net=net_name)
         teacher_id = prev_checkpoint['teacher_id']
         teacher_net = torch.load(f'models/{net_name}_{dataset_name}_{teacher_id}_original.pth').to(device)
@@ -431,6 +433,7 @@ if __name__ == '__main__':
             'FFT_lr_scheduler_state_dict': None,
 
             # random seed parameter
+            'random_seed': random_seed,
             'python_hash_seed': os.environ['PYTHONHASHSEED'],
             'random_state': random.getstate(),
             'np_random_state': np.random.get_state(),
@@ -497,6 +500,7 @@ if __name__ == '__main__':
             'FFT_lr_scheduler_state_dict': FFT_lr_scheduler.state_dict(),
 
             # random seed parameter
+            'random_seed': random_seed,
             'python_hash_seed': os.environ['PYTHONHASHSEED'],
             'random_state': random.getstate(),
             'np_random_state': np.random.get_state(),
