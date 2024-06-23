@@ -298,10 +298,13 @@ if __name__ == '__main__':
     args = get_args()
     if args.resume_id is not None:
         random_seed = args.resume_id
+        experiment_id = args.resume_id
     elif args.random_seed is not None:
         random_seed = args.random_seed
+        experiment_id = int(time.time())
     else:
         random_seed = int(time.time())
+        experiment_id = random_seed
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     # initialize training parameter
@@ -319,7 +322,7 @@ if __name__ == '__main__':
 
         net_name = prev_checkpoint['net_name']
         dataset_name = prev_checkpoint['dataset_name']
-        setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+        setup_logging(experiment_id=experiment_id, net=net_name, dataset=dataset_name, action='compress')
 
         # resume random seed
         torch_resume_random_seed(prev_checkpoint)
@@ -334,7 +337,7 @@ if __name__ == '__main__':
     else:
         net_name = args.net
         dataset_name = args.dataset
-        setup_logging(experiment_id=random_seed, net=net_name, dataset=dataset_name, action='compress')
+        setup_logging(experiment_id=experiment_id, net=net_name, dataset=dataset_name, action='compress')
         logging.info(f'Logging setup complete for experiment number: {random_seed}')
         hyperparams_info = "\n".join(f"{key}={value}" for key, value in settings.__dict__.items())
         logging.info(f"Experiment hyperparameters:\n{hyperparams_info}")
