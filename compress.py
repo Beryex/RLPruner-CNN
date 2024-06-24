@@ -182,7 +182,7 @@ def get_best_generated_architecture(original_net: nn.Module,
     else:
         best_net_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: Net {best_net_index} is the best new net')
-    best_generated_net = copy.deepcopy(prune_agent.net_list[best_net_index]).to(device)
+    best_generated_net = prune_agent.net_list[best_net_index].to(device)
     if wandb_available:
         wandb.log({"optimal_net_reward": prune_agent.ReplayBuffer[best_net_index, 0]}, step=epoch)
     
