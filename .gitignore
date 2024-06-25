@@ -1,6 +1,7 @@
 *.pkl
 *.pth
 *.txt
+!requirements.txt
 **/__pycache__/
 **/data/
 **/wandb/
