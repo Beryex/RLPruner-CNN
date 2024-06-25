@@ -101,7 +101,9 @@ def prune_architecture(net: nn.Module,
                        epoch: int):
     
     net, optimal_net_index = get_optimal_architecture(original_net=net, prune_agent=prune_agent)
-    prune_agent.step(optimal_net_index, epoch)
+    prune_agent.step(optimal_net_index=optimal_net_index, 
+                     epoch=epoch,
+                     cur_top1_acc=cur_top1_acc)
     
     return net
 
@@ -364,31 +366,37 @@ if __name__ == '__main__':
         original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
         Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
         FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
+
+        # resume RL parameter
+        initial_protect_used = prev_checkpoint['initial_protect_used']
+        best_acc = prev_checkpoint['best_acc']
+        initial_top1_acc = prev_checkpoint['initial_top1_acc']
+        cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
         # get complexity of original model
         original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
 
-    if args.resume:
-        # resume RL parameter
-        prune_agent = prev_checkpoint['prune_agent']
-        initial_protect_used = prev_checkpoint['initial_protect_used']
-        best_acc = prev_checkpoint['best_acc']
-        initial_top1_acc = prev_checkpoint['initial_top1_acc']
-        cur_top1_acc = prev_checkpoint['cur_top1_acc']
-    else:
-        # initialize reinforcement learning parameter
-        prune_distribution, filter_num = net.get_prune_distribution_and_filter_num()
-        ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + net.prune_choices_num]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
-        prune_agent = Prune_agent(prune_distribution=prune_distribution, ReplayBuffer=ReplayBuffer, filter_num=filter_num)
-        logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
-
         # initialize compressing parameter
         initial_protect_used = True
         best_acc = 0
         initial_top1_acc, _, _ = eval_network(target_net=net, target_eval_loader=test_loader, loss_function=loss_function)
         cur_top1_acc = initial_top1_acc
+
+    if args.resume:
+        # resume RL agent
+        prune_agent = prev_checkpoint['prune_agent']
+    else:
+        # initialize prune agent
+        prune_distribution, filter_num = net.get_prune_distribution_and_filter_num()
+        ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + net.prune_choices_num]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
+        prune_agent = Prune_agent(prune_distribution=prune_distribution, 
+                                  ReplayBuffer=ReplayBuffer, 
+                                  filter_num=filter_num, 
+                                  cur_top1_acc=cur_top1_acc)
+        logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
+
         if wandb_available:
             wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=0)
             for i in range(net.prune_choices_num):

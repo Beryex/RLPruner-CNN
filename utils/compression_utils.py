@@ -8,7 +8,8 @@ class Prune_agent():
     def __init__(self,
                  prune_distribution: Tensor,
                  ReplayBuffer: Tensor, 
-                 filter_num: int):
+                 filter_num: int,
+                 cur_top1_acc: float):
         self.modification_max_num = int(filter_num * settings.C_PRUNE_FILTER_MAX_RATIO)
         self.modification_min_num = int(filter_num * settings.C_PRUNE_FILTER_MIN_RATIO)
         self.prune_distribution = prune_distribution
@@ -20,16 +21,21 @@ class Prune_agent():
         self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
         self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
         self.lr_epoch = settings.RL_LR_EPOCH
-        self.cur_Q_value_max = -1
+        self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
+                                cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT ** 2 * settings.RL_DISCOUNT_FACTOR)
 
-    def step(self, optimal_net_index: int, epoch: int):
+    def step(self, 
+             optimal_net_index: int, 
+             epoch: int,
+             cur_top1_acc: float):
         if optimal_net_index == 1:
             # means generated net is better, reset counter then clear the ReplayBuffer, Reward_cache and net_list
             self.ReplayBuffer.zero_()
             self.Reward_cache = {}
             self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
             self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
-            self.cur_Q_value_max = -1
+            self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
+                                    cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT ** 2 * settings.RL_DISCOUNT_FACTOR)
         else:
             self.cur_single_step_acc_threshold += settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD_INCRE
         # update modification_num using method similiar to CosineAnnealingLR
