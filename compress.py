@@ -242,22 +242,17 @@ def evaluate_best_new_net(original_net: nn.Module,
     
     global initial_protect_used
     global cur_top1_acc
-    if initial_protect_used == True:
+    if initial_protect_used == True or (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc < prune_agent.cur_single_step_acc_threshold or new_net_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
         initial_protect_used = False
         optimal_net = best_new_net
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
-    elif (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc > prune_agent.cur_single_step_acc_threshold or new_net_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
+    else:
         optimal_net = original_net
         optimal_net_index = 0
         cur_top1_acc = original_net_top1_acc
         logging.info('Original net wins')
-    else:
-        optimal_net = best_new_net
-        optimal_net_index = 1
-        cur_top1_acc = new_net_top1_acc
-        logging.info('Generated net wins')
 
     if new_net_top1_acc <= 0.05:
         logging.info(f'Error Top1 acc: Original net: {original_net}')
