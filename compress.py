@@ -114,7 +114,7 @@ def get_optimal_architecture(original_net: nn.Module,
     
     # fine tuning best new architecture
     FT_optimizer = optim.SGD(best_new_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
-    FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_DEV_NUM, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
+    FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_COS_DEV_NUM, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     best_acc = 0.0
     for dev_epoch in range(1, settings.C_DEV_NUM + 1):
         train_loss = fine_tuning_network_knowledge_distillation(teacher_net=teacher_net, 
