@@ -248,7 +248,7 @@ def evaluate_best_new_net(original_net: nn.Module,
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
-    elif (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc > prune_agent.cur_single_step_acc_threshold:
+    elif (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc > prune_agent.cur_single_step_acc_threshold or new_net_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
         optimal_net = original_net
         optimal_net_index = 0
         cur_top1_acc = original_net_top1_acc
@@ -259,6 +259,9 @@ def evaluate_best_new_net(original_net: nn.Module,
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
 
+    if new_net_top1_acc <= 0.05:
+        logging.info(f'Error Top1 acc: Original net: {original_net}')
+        logging.info(f'Error Top1 acc: best new net: {best_new_net}')
     if wandb_available:
         wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
         wandb.log({"optimal_net_index": optimal_net_index}, step=epoch)
