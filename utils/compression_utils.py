@@ -42,12 +42,12 @@ class Prune_agent():
             for idx, layer_idx in enumerate(target_net.prune_choices):
                 if idx <= target_net.last_conv_layer_idx:
                     layer = target_net.conv_layers[layer_idx]
-                    prune_distribution[idx] = layer.out_channels
+                    self.prune_distribution[idx] = layer.out_channels
                 else:
                     layer = self.linear_layers[layer_idx]
-                    prune_distribution[idx] = layer.out_features
-            filter_num = torch.sum(prune_distribution)
-            prune_distribution = prune_distribution / filter_num
+                    self.prune_distribution[idx] = layer.out_features
+            filter_num = torch.sum(self.prune_distribution)
+            self.prune_distribution /= filter_num
         else:
             self.cur_single_step_acc_threshold += settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD_INCRE
         # update modification_num using method similiar to CosineAnnealingLR
