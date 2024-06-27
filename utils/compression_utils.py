@@ -44,7 +44,7 @@ class Prune_agent():
                     layer = target_net.conv_layers[layer_idx]
                     self.prune_distribution[idx] = layer.out_channels
                 else:
-                    layer = self.linear_layers[layer_idx]
+                    layer = target_net.linear_layers[layer_idx]
                     self.prune_distribution[idx] = layer.out_features
             filter_num = torch.sum(self.prune_distribution)
             self.prune_distribution /= filter_num
