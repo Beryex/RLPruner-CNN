@@ -20,9 +20,6 @@ from conf import settings
 from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
                    get_dataloader, setup_logging, Prune_agent, torch_set_random_seed, torch_resume_random_seed)
 
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.serialization")
-
 
 def fine_tuning_network_knowledge_distillation(teacher_net: nn.Module,
                         student_net: nn.Module,
@@ -103,7 +100,8 @@ def prune_architecture(net: nn.Module,
     net, optimal_net_index = get_optimal_architecture(original_net=net, prune_agent=prune_agent)
     prune_agent.step(optimal_net_index=optimal_net_index, 
                      epoch=epoch,
-                     cur_top1_acc=cur_top1_acc)
+                     cur_top1_acc=cur_top1_acc,
+                     target_net=net)
     
     return net
 

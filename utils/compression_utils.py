@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 import math
+import torch.nn as nn
 
 from conf import settings
 
@@ -27,7 +28,8 @@ class Prune_agent():
     def step(self, 
              optimal_net_index: int, 
              epoch: int,
-             cur_top1_acc: float):
+             cur_top1_acc: float,
+             target_net: nn.Module):
         if optimal_net_index == 1:
             # means generated net is better, reset counter then clear the ReplayBuffer, Reward_cache and net_list
             self.ReplayBuffer.zero_()
@@ -36,6 +38,16 @@ class Prune_agent():
             self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
             self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
                                     cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT ** 2 * settings.RL_DISCOUNT_FACTOR)
+            # reinitialize prune distribution
+            for idx, layer_idx in enumerate(target_net.prune_choices):
+                if idx <= target_net.last_conv_layer_idx:
+                    layer = target_net.conv_layers[layer_idx]
+                    prune_distribution[idx] = layer.out_channels
+                else:
+                    layer = self.linear_layers[layer_idx]
+                    prune_distribution[idx] = layer.out_features
+            filter_num = torch.sum(prune_distribution)
+            prune_distribution = prune_distribution / filter_num
         else:
             self.cur_single_step_acc_threshold += settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD_INCRE
         # update modification_num using method similiar to CosineAnnealingLR
