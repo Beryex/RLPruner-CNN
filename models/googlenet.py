@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-from utils import Custom_Conv2d, Custom_Linear, Prune_agent
+from utils import Prune_agent
 
 class Inception(nn.Module):
     def __init__(self, input_channels: int, n1x1: int, n3x3_reduce: int, n3x3: int, n5x5_reduce: int, n5x5: int, pool_proj: int):
@@ -15,17 +15,17 @@ class Inception(nn.Module):
 
         #1x1conv branch
         self.b1 = nn.Sequential(
-            Custom_Conv2d(input_channels, n1x1, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, n1x1, kernel_size=1, bias=False),
             nn.BatchNorm2d(n1x1),
             nn.ReLU(inplace=True)
         )
 
         #1x1conv -> 3x3conv branch
         self.b2 = nn.Sequential(
-            Custom_Conv2d(input_channels, n3x3_reduce, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, n3x3_reduce, kernel_size=1, bias=False),
             nn.BatchNorm2d(n3x3_reduce),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(n3x3_reduce, n3x3, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(n3x3_reduce, n3x3, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n3x3),
             nn.ReLU(inplace=True)
         )
@@ -35,13 +35,13 @@ class Inception(nn.Module):
         #of 1 5x5 filters to obtain the same receptive
         #field with fewer parameters
         self.b3 = nn.Sequential(
-            Custom_Conv2d(input_channels, n5x5_reduce, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, n5x5_reduce, kernel_size=1, bias=False),
             nn.BatchNorm2d(n5x5_reduce),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(n5x5_reduce, n5x5, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(n5x5_reduce, n5x5, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n5x5, n5x5),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(n5x5, n5x5, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(n5x5, n5x5, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(n5x5),
             nn.ReLU(inplace=True)
         )
@@ -50,7 +50,7 @@ class Inception(nn.Module):
         #same conv
         self.b4 = nn.Sequential(
             nn.MaxPool2d(3, stride=1, padding=1),
-            Custom_Conv2d(input_channels, pool_proj, kernel_size=1, bias=False),
+            nn.Conv2d(input_channels, pool_proj, kernel_size=1, bias=False),
             nn.BatchNorm2d(pool_proj),
             nn.ReLU(inplace=True)
         )
@@ -128,13 +128,13 @@ class GoogleNet(nn.Module):
     def __init__(self, in_channels=3, num_class=100):
         super().__init__()
         self.prelayer = nn.Sequential(
-            Custom_Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            Custom_Conv2d(64, 192, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(64, 192, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(192),
             nn.ReLU(inplace=True),
         )
@@ -156,7 +156,7 @@ class GoogleNet(nn.Module):
         #input feature size: 8*8*1024
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout2d()
-        self.linear = Custom_Linear(1024, num_class)
+        self.linear = nn.Linear(1024, num_class)
 
         self.prune_choices_num = 67
 
