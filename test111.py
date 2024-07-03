@@ -4,7 +4,7 @@ device = 'cuda'
 
 from models.googlenet import GoogleNet
 from models.vgg import VGG16
-ret = VGG16(3, 100).to(device)
+ret = GoogleNet(3, 100).to(device)
 
 _, _, layers = extract_prunable_layers_info(ret)
 x = torch.rand(1, 3, 32, 32).to(device)
@@ -66,3 +66,11 @@ output = model(x)
 result, index_start = check_tensor_in_concat(model.x2, model.x3, model)
 print("x3 contains x2:", result)
 print(index_start)'''
+
+
+'''import torch
+x1 = torch.rand(1, 3, 32, 32)
+print(id(x1))
+x2 = x1.view(x1.size()[0], -1)
+print(id(x2))
+print(torch.equal(x1.view(x1.size()[0], -1), x2.view(x2.size()[0], -1)))'''
