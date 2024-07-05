@@ -76,7 +76,6 @@ def extract_prunable_layer_dependence(model, x, prunable_layers):
     def recursive_collect_all_layers(module, parent=None):
         children = list(module.children())
         for layer in children:
-            nonlocal all_layers
             if not list(layer.children()):
                 all_layers.append(layer)
             recursive_collect_all_layers(layer, module)
@@ -84,7 +83,7 @@ def extract_prunable_layer_dependence(model, x, prunable_layers):
     recursive_collect_all_layers(model)
 
     def forward_hook(layer, input, output):
-        nonlocal activation_hook_used, get_layer_input_tensor, get_layer_output_tensor, get_tensor_recipients, x
+        nonlocal activation_hook_used
         input = input[0]
         # ignore activation layer that operates tensor in_place and do not change tensor id
         if not list(layer.children()):
@@ -221,13 +220,18 @@ def check_tensor_residual(input_tensor, target_tensor, get_layer_output_tensor):
 def map_layers(original_net, generated_net):
     mapping = {}
     for orig_layer, gen_layer in zip(original_net.modules(), generated_net.modules()):
-        mapping[orig_layer] = gen_layer
+        if not list(orig_layer.children()):
+            mapping[orig_layer] = gen_layer
     return mapping
 
 def copy_prunable_and_next_layers(original_prunable_layuers, original_next_layers, mapping):
     generated_prunable_layers = []
     generated_next_layers = []
     for layer in original_prunable_layuers:
+        if layer not in mapping:
+            print(original_next_layers)
+            print(original_prunable_layuers)
+            print(mapping)
         generated_prunable_layers.append(mapping[layer])
     for layer_idx in range(len(original_next_layers)):
         new_layers_info = []

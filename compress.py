@@ -93,27 +93,30 @@ def eval_network(target_net: nn.Module,
     return top1_acc, top5_acc, eval_loss
 
 
-def prune_architecture(net: nn.Module, 
+def prune_architecture(net_with_info: tuple,
                        prune_agent: Prune_agent, 
                        epoch: int):
     
-    net, optimal_net_index = get_optimal_architecture(original_net=net, prune_agent=prune_agent)
+    net_with_info, optimal_net_index = get_optimal_architecture(original_net_with_info=net_with_info, 
+                                                                prune_agent=prune_agent)
     prune_agent.step(optimal_net_index=optimal_net_index, 
                      epoch=epoch,
-                     cur_top1_acc=cur_top1_acc,
-                     target_net=net)
+                     cur_top1_acc=cur_top1_acc)
     
-    return net
+    return net_with_info
 
-def get_optimal_architecture(original_net: nn.Module, 
+def get_optimal_architecture(original_net_with_info: tuple,
                              prune_agent: Prune_agent):
     # generate architecture
-    best_generated_net, best_generated_prunable_layer, best_generated_next_layers = get_best_generated_architecture(original_net=original_net, prune_agent=prune_agent)
+    best_generated_net_with_info = get_best_generated_architecture(original_net_with_info=original_net_with_info, 
+                                                                   prune_agent=prune_agent)
+    best_generated_net = best_generated_net_with_info[0]
     
     # fine tuning best new architecture
     FT_optimizer = optim.SGD(best_generated_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
     FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_COS_DEV_NUM, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
-    best_acc = 0.0
+    best_acc = -1
+    best_trained_generated_net_with_info = None
     for dev_epoch in range(1, settings.C_DEV_NUM + 1):
         train_loss = fine_tuning_network_knowledge_distillation(teacher_net=teacher_net, 
                                                                 student_net=best_generated_net, 
@@ -128,24 +131,16 @@ def get_optimal_architecture(original_net: nn.Module,
 
         if best_acc < top1_acc:
             best_acc = top1_acc
-            torch.save(best_generated_net, f'models/temporary_net.pth')
-    best_generated_net = torch.load('models/temporary_net.pth').to(device)
+            print(best_acc)
+            best_trained_generated_net_with_info = copy.deepcopy(best_generated_net_with_info)
     
     # compare best_generated_net with original net
-    optimal_net, optimal_net_index = evaluate_best_generated_net(original_net=original_net, 
-                                                                 best_generated_net=best_generated_net, 
-                                                                 target_eval_loader=test_loader, 
-                                                                 prune_agent=prune_agent)
-    
-    if optimal_net_index == 0:
-        optimal_net_FLOPs, optimal_net_Params = profile(model=original_net, inputs = (sample_input, ), verbose=False)
-    else:
-        # update prunable_layers and next_layers
-        global original_prunable_layers
-        global original_next_layers
-        original_prunable_layers = best_generated_prunable_layer
-        original_next_layers = best_generated_next_layers
-        optimal_net_FLOPs, optimal_net_Params = profile(model=best_generated_net, inputs = (sample_input, ), verbose=False)
+    optimal_net_with_info, optimal_net_index = evaluate_best_generated_net(original_net_with_info=original_net_with_info, 
+                                                                           best_generated_net_with_info=best_trained_generated_net_with_info, 
+                                                                           target_eval_loader=test_loader, 
+                                                                           prune_agent=prune_agent)
+    optimal_net = optimal_net_with_info[0]
+    optimal_net_FLOPs, optimal_net_Params = profile(model=optimal_net, inputs = (sample_input, ), verbose=False)
     
     global FLOPs_compression_ratio
     global Para_compression_ratio
@@ -153,21 +148,19 @@ def get_optimal_architecture(original_net: nn.Module,
     Para_compression_ratio = 1 - optimal_net_Params / original_para_num
 
     
-    return optimal_net, optimal_net_index
+    return optimal_net_with_info, optimal_net_index
 
-def get_best_generated_architecture(original_net: nn.Module,
+def get_best_generated_architecture(original_net_with_info: tuple,
                                     prune_agent: Prune_agent):
     tolerance_time = settings.RL_LR_TOLERANCE
     for _ in range(1, prune_agent.lr_epoch + 1):
         # we only use the last updated net_list and Q_value_dict for fine tuning, and previous trajectory is used for updating prune distribution
         Q_value_dict = {}
         sample_trajectory(cur_step=0,
-                        original_net=original_net,
+                        original_net_with_info=original_net_with_info,
                         prune_agent=prune_agent,
                         Q_value_dict=Q_value_dict,
-                        prev_prune_counter_sum=0,
-                        original_prunable_layers=original_prunable_layers,
-                        original_next_layers=original_next_layers)
+                        prev_prune_counter_sum=0)
         logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
         logging.info(f'Current new net Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
         logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
@@ -192,19 +185,17 @@ def get_best_generated_architecture(original_net: nn.Module,
     else:
         best_net_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: Net {best_net_index} is the best new net')
-    best_generated_net, best_generated_prunable_layer, best_generated_next_layers = prune_agent.net_list[best_net_index]
+    best_generated_net_with_info = prune_agent.net_list[best_net_index]
     if wandb_available:
         wandb.log({"optimal_net_reward": prune_agent.ReplayBuffer[best_net_index, 0]}, step=epoch)
     
-    return best_generated_net, best_generated_prunable_layer, best_generated_next_layers
+    return best_generated_net_with_info
 
 def sample_trajectory(cur_step: int, 
-                      original_net: nn.Module, 
+                      original_net_with_info: tuple,
                       prune_agent: Prune_agent, 
                       Q_value_dict: dict, 
-                      prev_prune_counter_sum: int,
-                      original_prunable_layers: list,
-                      original_next_layers: list):
+                      prev_prune_counter_sum: int):
     # sample trajectory using DFS
     if cur_step == settings.RL_MAX_SAMPLE_STEP:
         return
@@ -215,12 +206,15 @@ def sample_trajectory(cur_step: int,
     with tqdm(total=cur_generate_num, desc=f'Generated architectures', unit='model', leave=False) as pbar:
         for model_id in range(cur_generate_num):
             # generate architecture
+            original_net, original_prunable_layers, original_next_layers = original_net_with_info
             generated_net = copy.deepcopy(original_net).to(device)
             mapping = map_layers(original_net=original_net, generated_net=generated_net)
             generated_prunable_layers, generated_next_layers = copy_prunable_and_next_layers(original_prunable_layuers=original_prunable_layers, 
                                                                                              original_next_layers=original_next_layers,
                                                                                              mapping=mapping)
-            prune_distribution_action, prune_counter = prune_agent.update_architecture(prunable_layers=generated_prunable_layers, next_layers=generated_next_layers)
+            prune_distribution_action, prune_counter = prune_agent.update_architecture(prunable_layers=generated_prunable_layers, 
+                                                                                       next_layers=generated_next_layers)
+            generated_net_with_info = (generated_net, generated_prunable_layers, generated_next_layers)
 
             # evaluate generated architecture
             cur_prune_counter_sum = prune_counter.int() + prev_prune_counter_sum
@@ -232,12 +226,10 @@ def sample_trajectory(cur_step: int,
             else:
                 Q_value_dict[cur_step][model_id] = prune_agent.Reward_cache[tuple_key]
             sample_trajectory(cur_step=cur_step + 1, 
-                              original_net=generated_net, 
+                              original_net_with_info=generated_net_with_info, 
                               prune_agent=prune_agent, 
                               Q_value_dict=Q_value_dict, 
-                              prev_prune_counter_sum=cur_prune_counter_sum,
-                              original_prunable_layers=generated_prunable_layers,
-                              original_next_layers=generated_next_layers)
+                              prev_prune_counter_sum=cur_prune_counter_sum)
 
             if cur_step + 1 in Q_value_dict:
                 Q_value_dict[cur_step][model_id] += settings.RL_DISCOUNT_FACTOR * torch.max(Q_value_dict[cur_step + 1])
@@ -248,40 +240,44 @@ def sample_trajectory(cur_step: int,
                 if Q_value_dict[0][model_id] >= min_top1_acc:
                     prune_agent.ReplayBuffer[min_idx, 0] = Q_value_dict[0][model_id]
                     prune_agent.ReplayBuffer[min_idx, 1:] = prune_distribution_action
-                    prune_agent.net_list[min_idx] = (generated_net, generated_prunable_layers, generated_next_layers)
+                    prune_agent.net_list[min_idx] = generated_net_with_info
             
             pbar.update(1)
 
 
-def evaluate_best_generated_net(original_net: nn.Module, 
-                          best_generated_net: nn.Module, 
-                          target_eval_loader: torch.utils.data.DataLoader,
-                          prune_agent: Prune_agent):
-    original_net_top1_acc, original_net_top5_acc, _ = eval_network(target_net=original_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
-    new_net_top1_acc, new_net_top5_acc, _ = eval_network(target_net=best_generated_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
+def evaluate_best_generated_net(original_net_with_info: tuple, 
+                                best_generated_net_with_info: tuple, 
+                                target_eval_loader: torch.utils.data.DataLoader,
+                                prune_agent: Prune_agent):
+    original_net_top1_acc, original_net_top5_acc, _ = eval_network(target_net=original_net_with_info[0], 
+                                                                   target_eval_loader=target_eval_loader, 
+                                                                   loss_function=loss_function)
+    new_net_top1_acc, new_net_top5_acc, _ = eval_network(target_net=best_generated_net_with_info[0], 
+                                                         target_eval_loader=target_eval_loader, 
+                                                         loss_function=loss_function)
     
     global initial_protect_used
     global cur_top1_acc
     if initial_protect_used == True or (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc < prune_agent.cur_single_step_acc_threshold:
         initial_protect_used = False
-        optimal_net = best_generated_net
+        optimal_net_with_info = best_generated_net_with_info
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
     else:
-        optimal_net = original_net
+        optimal_net_with_info = original_net_with_info
         optimal_net_index = 0
         cur_top1_acc = original_net_top1_acc
         logging.info('Original net wins')
 
     if new_net_top1_acc <= 0.05:
-        logging.info(f'Error Top1 acc: Original net: {original_net}')
-        logging.info(f'Error Top1 acc: best generated net: {best_generated_net}')
+        logging.info(f'Error Top1 acc: Original net: {original_net_with_info[0]}')
+        logging.info(f'Error Top1 acc: best generated net: {best_generated_net_with_info[0]}')
     if wandb_available:
         wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
         wandb.log({"optimal_net_index": optimal_net_index}, step=epoch)
     logging.info(f'Generated Model Top1 Accuracy List: {[original_net_top1_acc, new_net_top1_acc]}, Top5 Accuracy List: {[original_net_top5_acc, new_net_top5_acc]}')
-    return optimal_net, optimal_net_index
+    return optimal_net_with_info, optimal_net_index
 
 
 def get_args():
@@ -369,6 +365,7 @@ if __name__ == '__main__':
         teacher_net = copy.deepcopy(net).to(device)
         teacher_id = args.net_id
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
+    
 
     # initialize parameter to compute complexity of model
     if dataset_name == 'mnist':
@@ -376,6 +373,10 @@ if __name__ == '__main__':
     else:
         sample_input = torch.rand(1, 3, 32, 32).to(device)
     sample_input.requires_grad = True # used to extract dependence
+
+    # extract layer info
+    prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(net)
+    next_layers = extract_prunable_layer_dependence(model=net, x=sample_input, prunable_layers=prunable_layers)
     
     if args.resume:
         # resume complexity of model
@@ -406,8 +407,6 @@ if __name__ == '__main__':
         prune_agent = prev_checkpoint['prune_agent']
     else:
         # initialize prune agent
-        prune_distribution, filter_num, original_prunable_layers = extract_prunable_layers_info(net)
-        original_next_layers = extract_prunable_layer_dependence(model=net, x=sample_input, prunable_layers=original_prunable_layers)
         ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + len(prune_distribution)]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
         prune_agent = Prune_agent(prune_distribution=prune_distribution,
                                   ReplayBuffer=ReplayBuffer, 
@@ -427,14 +426,16 @@ if __name__ == '__main__':
     for epoch in range(1, settings.C_COMPRESSION_EPOCH + 1):
         if prev_reached_final_fine_tuning == True or epoch <= prev_epoch:
             continue
-
-        net = prune_architecture(net=net, prune_agent=prune_agent, epoch=epoch)
+        net_with_info = (net, prunable_layers, next_layers)
+        net, prunable_layers, next_layers = prune_architecture(net_with_info=net_with_info, 
+                                                               prune_agent=prune_agent, 
+                                                               epoch=epoch)
 
         if cur_top1_acc >= initial_top1_acc - settings.C_OVERALL_ACCURACY_CHANGE_THRESHOLD:
             torch.save(net, f'models/{net_name}_{dataset_name}_{random_seed}_compressed.pth')
         if wandb_available:
             wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=epoch)
-            for i in range(net.len(prune_agent.prune_distribution)):
+            for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=epoch)
         logging.info(f'Epoch: {epoch}/{settings.C_COMPRESSION_EPOCH}, modification_num: {prune_agent.modification_num}, compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
 
