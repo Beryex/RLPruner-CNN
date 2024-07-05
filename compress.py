@@ -131,7 +131,6 @@ def get_optimal_architecture(original_net_with_info: tuple,
 
         if best_acc < top1_acc:
             best_acc = top1_acc
-            print(best_acc)
             best_trained_generated_net_with_info = copy.deepcopy(best_generated_net_with_info)
     
     # compare best_generated_net with original net
