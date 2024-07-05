@@ -17,7 +17,7 @@ except ImportError:
 import logging
 
 from conf import settings
-from utils import (Custom_Conv2d, Custom_Linear, count_custom_conv2d, count_custom_linear, get_net_class, 
+from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, map_layers, copy_prunable_and_next_layers, 
                    get_dataloader, setup_logging, Prune_agent, torch_set_random_seed, torch_resume_random_seed)
 
 
@@ -108,36 +108,44 @@ def prune_architecture(net: nn.Module,
 def get_optimal_architecture(original_net: nn.Module, 
                              prune_agent: Prune_agent):
     # generate architecture
-    best_new_net = get_best_generated_architecture(original_net=original_net, prune_agent=prune_agent)
+    best_generated_net, best_generated_prunable_layer, best_generated_next_layers = get_best_generated_architecture(original_net=original_net, prune_agent=prune_agent)
     
     # fine tuning best new architecture
-    FT_optimizer = optim.SGD(best_new_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
+    FT_optimizer = optim.SGD(best_generated_net.parameters(), lr=settings.T_FT_LR_SCHEDULAR_INITIAL_LR, momentum=0.9, weight_decay=5e-4)
     FT_lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(FT_optimizer, settings.C_COS_DEV_NUM, eta_min=settings.T_LR_SCHEDULAR_MIN_LR,last_epoch=-1)
     best_acc = 0.0
     for dev_epoch in range(1, settings.C_DEV_NUM + 1):
         train_loss = fine_tuning_network_knowledge_distillation(teacher_net=teacher_net, 
-                                                                student_net=best_new_net, 
+                                                                student_net=best_generated_net, 
                                                                 target_optimizer=FT_optimizer, 
                                                                 target_train_loader=train_loader, 
                                                                 loss_function=loss_function, 
                                                                 epoch=dev_epoch, 
                                                                 fft=False)
-        top1_acc, top5_acc, _ = eval_network(target_net=best_new_net, target_eval_loader=test_loader, loss_function=loss_function)
+        top1_acc, top5_acc, _ = eval_network(target_net=best_generated_net, target_eval_loader=test_loader, loss_function=loss_function)
         logging.info(f"epoch: {dev_epoch}/{settings.C_DEV_NUM}, train_Loss: {train_loss}, top1_acc: {top1_acc}, top5_acc: {top5_acc}")
         FT_lr_scheduler.step()
 
         if best_acc < top1_acc:
             best_acc = top1_acc
-            torch.save(best_new_net, f'models/temporary_net.pth')
-    best_new_net = torch.load('models/temporary_net.pth').to(device)
+            torch.save(best_generated_net, f'models/temporary_net.pth')
+    best_generated_net = torch.load('models/temporary_net.pth').to(device)
     
-    # compare best_new_net with original net
-    optimal_net, optimal_net_index = evaluate_best_new_net(original_net=original_net, best_new_net=best_new_net, target_eval_loader=test_loader, prune_agent=prune_agent)
+    # compare best_generated_net with original net
+    optimal_net, optimal_net_index = evaluate_best_generated_net(original_net=original_net, 
+                                                                 best_generated_net=best_generated_net, 
+                                                                 target_eval_loader=test_loader, 
+                                                                 prune_agent=prune_agent)
     
     if optimal_net_index == 0:
-        optimal_net_FLOPs, optimal_net_Params = profile(model=original_net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
+        optimal_net_FLOPs, optimal_net_Params = profile(model=original_net, inputs = (sample_input, ), verbose=False)
     else:
-        optimal_net_FLOPs, optimal_net_Params = profile(model=best_new_net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
+        # update prunable_layers and next_layers
+        global original_prunable_layers
+        global original_next_layers
+        original_prunable_layers = best_generated_prunable_layer
+        original_next_layers = best_generated_next_layers
+        optimal_net_FLOPs, optimal_net_Params = profile(model=best_generated_net, inputs = (sample_input, ), verbose=False)
     
     global FLOPs_compression_ratio
     global Para_compression_ratio
@@ -157,7 +165,9 @@ def get_best_generated_architecture(original_net: nn.Module,
                         original_net=original_net,
                         prune_agent=prune_agent,
                         Q_value_dict=Q_value_dict,
-                        prev_prune_counter_sum=0)
+                        prev_prune_counter_sum=0,
+                        original_prunable_layers=original_prunable_layers,
+                        original_next_layers=original_next_layers)
         logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
         logging.info(f'Current new net Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
         logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
@@ -182,17 +192,19 @@ def get_best_generated_architecture(original_net: nn.Module,
     else:
         best_net_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: Net {best_net_index} is the best new net')
-    best_generated_net = prune_agent.net_list[best_net_index].to(device)
+    best_generated_net, best_generated_prunable_layer, best_generated_next_layers = prune_agent.net_list[best_net_index]
     if wandb_available:
         wandb.log({"optimal_net_reward": prune_agent.ReplayBuffer[best_net_index, 0]}, step=epoch)
     
-    return best_generated_net
+    return best_generated_net, best_generated_prunable_layer, best_generated_next_layers
 
 def sample_trajectory(cur_step: int, 
                       original_net: nn.Module, 
                       prune_agent: Prune_agent, 
                       Q_value_dict: dict, 
-                      prev_prune_counter_sum: int):
+                      prev_prune_counter_sum: int,
+                      original_prunable_layers: list,
+                      original_next_layers: list):
     # sample trajectory using DFS
     if cur_step == settings.RL_MAX_SAMPLE_STEP:
         return
@@ -204,7 +216,11 @@ def sample_trajectory(cur_step: int,
         for model_id in range(cur_generate_num):
             # generate architecture
             generated_net = copy.deepcopy(original_net).to(device)
-            prune_distribution_action, prune_counter = net_class.update_architecture(generated_net, prune_agent, settings.RL_PROBABILITY_LOWER_BOUND)
+            mapping = map_layers(original_net=original_net, generated_net=generated_net)
+            generated_prunable_layers, generated_next_layers = copy_prunable_and_next_layers(original_prunable_layuers=original_prunable_layers, 
+                                                                                             original_next_layers=original_next_layers,
+                                                                                             mapping=mapping)
+            prune_distribution_action, prune_counter = prune_agent.update_architecture(prunable_layers=generated_prunable_layers, next_layers=generated_next_layers)
 
             # evaluate generated architecture
             cur_prune_counter_sum = prune_counter.int() + prev_prune_counter_sum
@@ -215,7 +231,13 @@ def sample_trajectory(cur_step: int,
                 prune_agent.Reward_cache[tuple_key] = top1_acc
             else:
                 Q_value_dict[cur_step][model_id] = prune_agent.Reward_cache[tuple_key]
-            sample_trajectory(cur_step + 1, generated_net, prune_agent, Q_value_dict, cur_prune_counter_sum)
+            sample_trajectory(cur_step=cur_step + 1, 
+                              original_net=generated_net, 
+                              prune_agent=prune_agent, 
+                              Q_value_dict=Q_value_dict, 
+                              prev_prune_counter_sum=cur_prune_counter_sum,
+                              original_prunable_layers=generated_prunable_layers,
+                              original_next_layers=generated_next_layers)
 
             if cur_step + 1 in Q_value_dict:
                 Q_value_dict[cur_step][model_id] += settings.RL_DISCOUNT_FACTOR * torch.max(Q_value_dict[cur_step + 1])
@@ -226,23 +248,23 @@ def sample_trajectory(cur_step: int,
                 if Q_value_dict[0][model_id] >= min_top1_acc:
                     prune_agent.ReplayBuffer[min_idx, 0] = Q_value_dict[0][model_id]
                     prune_agent.ReplayBuffer[min_idx, 1:] = prune_distribution_action
-                    prune_agent.net_list[min_idx] = generated_net
+                    prune_agent.net_list[min_idx] = (generated_net, generated_prunable_layers, generated_next_layers)
             
             pbar.update(1)
 
 
-def evaluate_best_new_net(original_net: nn.Module, 
-                          best_new_net: nn.Module, 
+def evaluate_best_generated_net(original_net: nn.Module, 
+                          best_generated_net: nn.Module, 
                           target_eval_loader: torch.utils.data.DataLoader,
                           prune_agent: Prune_agent):
     original_net_top1_acc, original_net_top5_acc, _ = eval_network(target_net=original_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
-    new_net_top1_acc, new_net_top5_acc, _ = eval_network(target_net=best_new_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
+    new_net_top1_acc, new_net_top5_acc, _ = eval_network(target_net=best_generated_net, target_eval_loader=target_eval_loader, loss_function=loss_function)
     
     global initial_protect_used
     global cur_top1_acc
     if initial_protect_used == True or (original_net_top1_acc - new_net_top1_acc) / original_net_top1_acc < prune_agent.cur_single_step_acc_threshold:
         initial_protect_used = False
-        optimal_net = best_new_net
+        optimal_net = best_generated_net
         optimal_net_index = 1
         cur_top1_acc = new_net_top1_acc
         logging.info('Generated net wins')
@@ -254,7 +276,7 @@ def evaluate_best_new_net(original_net: nn.Module,
 
     if new_net_top1_acc <= 0.05:
         logging.info(f'Error Top1 acc: Original net: {original_net}')
-        logging.info(f'Error Top1 acc: best new net: {best_new_net}')
+        logging.info(f'Error Top1 acc: best generated net: {best_generated_net}')
     if wandb_available:
         wandb.log({"generated_net_top1_acc": new_net_top1_acc}, step=epoch)
         wandb.log({"optimal_net_index": optimal_net_index}, step=epoch)
@@ -326,7 +348,6 @@ if __name__ == '__main__':
 
         # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{random_seed}_temp.pth').to(device)
-        net_class = get_net_class(net=net_name)
         teacher_id = prev_checkpoint['teacher_id']
         teacher_net = torch.load(f'models/{net_name}_{dataset_name}_{teacher_id}_original.pth').to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
@@ -341,20 +362,20 @@ if __name__ == '__main__':
         # reinitialize random seed
         torch_set_random_seed(random_seed)
         logging.info(f'Start with random seed: {random_seed}')
+        logging.info(f'Start initializing')
 
         # get net and dataset
         net = torch.load(f'models/{net_name}_{dataset_name}_{args.net_id}_original.pth').to(device)
-        net_class = get_net_class(net=net_name)
         teacher_net = copy.deepcopy(net).to(device)
         teacher_id = args.net_id
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(dataset=dataset_name, pin_memory=True)
 
     # initialize parameter to compute complexity of model
-    if net_name == 'lenet5':
-        input = torch.rand(1, 1, 32, 32).to(device)
+    if dataset_name == 'mnist':
+        sample_input = torch.rand(1, 1, 32, 32).to(device)
     else:
-        input = torch.rand(1, 3, 32, 32).to(device)
-    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
+        sample_input = torch.rand(1, 3, 32, 32).to(device)
+    sample_input.requires_grad = True # used to extract dependence
     
     if args.resume:
         # resume complexity of model
@@ -370,7 +391,7 @@ if __name__ == '__main__':
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
         # get complexity of original model
-        original_FLOPs_num, original_para_num = profile(model=net, inputs = (input, ), verbose=False, custom_ops=custom_ops)
+        original_FLOPs_num, original_para_num = profile(model=net, inputs = (sample_input, ), verbose=False)
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
 
@@ -385,9 +406,10 @@ if __name__ == '__main__':
         prune_agent = prev_checkpoint['prune_agent']
     else:
         # initialize prune agent
-        prune_distribution, filter_num = net.get_prune_distribution_and_filter_num()
-        ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + net.prune_choices_num]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
-        prune_agent = Prune_agent(prune_distribution=prune_distribution, 
+        prune_distribution, filter_num, original_prunable_layers = extract_prunable_layers_info(net)
+        original_next_layers = extract_prunable_layer_dependence(model=net, x=sample_input, prunable_layers=original_prunable_layers)
+        ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + len(prune_distribution)]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
+        prune_agent = Prune_agent(prune_distribution=prune_distribution,
                                   ReplayBuffer=ReplayBuffer, 
                                   filter_num=filter_num, 
                                   cur_top1_acc=cur_top1_acc)
@@ -395,7 +417,7 @@ if __name__ == '__main__':
 
         if wandb_available:
             wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=0)
-            for i in range(net.prune_choices_num):
+            for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=0)
     if args.resume:
         # resume random seed
@@ -412,7 +434,7 @@ if __name__ == '__main__':
             torch.save(net, f'models/{net_name}_{dataset_name}_{random_seed}_compressed.pth')
         if wandb_available:
             wandb.log({"top1_acc": cur_top1_acc, "modification_num": prune_agent.modification_num, "FLOPs_compression_ratio": FLOPs_compression_ratio, "Para_compression_ratio": Para_compression_ratio}, step=epoch)
-            for i in range(net.prune_choices_num):
+            for i in range(net.len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, step=epoch)
         logging.info(f'Epoch: {epoch}/{settings.C_COMPRESSION_EPOCH}, modification_num: {prune_agent.modification_num}, compression ratio: FLOPs: {FLOPs_compression_ratio}, Parameter number {Para_compression_ratio}')
 

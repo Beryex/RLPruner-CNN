@@ -142,7 +142,7 @@ class GoogleNet(nn.Module):
         self.a3 = Inception(192, 64, 96, 128, 16, 32, 32)
         self.b3 = Inception(256, 128, 128, 192, 32, 96, 64)
 
-        self.maxpool = nn.MaxPool2d(3, stride=2, padding=1)
+        self.maxpool1 = nn.MaxPool2d(3, stride=2, padding=1)
 
         self.a4 = Inception(480, 192, 96, 208, 16, 48, 64)
         self.b4 = Inception(512, 160, 112, 224, 24, 64, 64)
@@ -150,8 +150,12 @@ class GoogleNet(nn.Module):
         self.d4 = Inception(512, 112, 144, 288, 32, 64, 64)
         self.e4 = Inception(528, 256, 160, 320, 32, 128, 128)
 
+        self.maxpool2 = nn.MaxPool2d(3, stride=2, padding=1)
+
         self.a5 = Inception(832, 256, 160, 320, 32, 128, 128)
         self.b5 = Inception(832, 384, 192, 384, 48, 128, 128)
+
+        self.maxpool3 = nn.MaxPool2d(3, stride=2, padding=1)
 
         #input feature size: 8*8*1024
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
@@ -162,16 +166,16 @@ class GoogleNet(nn.Module):
 
     def forward(self, x):
         x = self.prelayer(x)
-        x = self.maxpool(x)
+        x = self.maxpool1(x)
         x = self.a3(x)
         x = self.b3(x)
-        x = self.maxpool(x)
+        x = self.maxpool2(x)
         x = self.a4(x)
         x = self.b4(x)
         x = self.c4(x)
         x = self.d4(x)
         x = self.e4(x)
-        x = self.maxpool(x)
+        x = self.maxpool3(x)
         x = self.a5(x)
         x = self.b5(x)
         x = self.avgpool(x)
