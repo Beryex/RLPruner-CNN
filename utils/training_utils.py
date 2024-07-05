@@ -58,8 +58,7 @@ def setup_logging(experiment_id: int,
             name=f"{action}_{net}_on_{dataset}_{experiment_id}",
             id=str(experiment_id),
             config=hyperparams_config,
-            resume=True,
-            mode='disabled'
+            resume=True
         )
 
     # initialize logging
