@@ -1,8 +1,5 @@
-import torch
 from torch import Tensor
 import torch.nn as nn
-
-from utils import Prune_agent
 
 class VGG16(nn.Module):
     def __init__(self, 
