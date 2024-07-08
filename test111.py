@@ -5,8 +5,11 @@ from utils import extract_prunable_layer_dependence, extract_prunable_layers_inf
 device = 'cuda'
 model = torch.load('./models/vgg16_cifar100_1720125382_original.pth').to(device)
 from models.vgg import VGG16
+from models.googlenet import GoogleNet
+from models.resnet import ResNet50
 
-# model = VGG16(3, 100).to(device)
+model = ResNet50(3, 100).to(device)
+print(model)
 sample_input = torch.rand(1, 3, 32, 32).to(device)
 sample_input.requires_grad = True # used to extract dependence
 
@@ -67,38 +70,53 @@ def get_tensor_idx_at_next_layer(input_tensor, component_tensor):
             print(i)
             return i
     return -1
+
+def check_tensor_residual(input_tensor, target_tensor, get_layer_output_tensor):
+    if target_tensor.shape != input_tensor.shape:
+        return False
     
+    residual_tensor = target_tensor - input_tensor
+    for tensor in get_layer_output_tensor.values():
+        if tensor.shape != residual_tensor.shape:
+            continue
+        elif torch.allclose(tensor, residual_tensor, atol=1e-6):
+            return True
+    return False
 
 class simple_model(nn.Module):
     def __init__(self, in_channels, num_class):
         super().__init__()
-        self.conv0 = nn.Conv2d(in_channels, 2, kernel_size=5, bias=False)
-        self.conv1 = nn.Conv2d(2, 5, kernel_size=5, bias=False)
-        self.conv2 = nn.Conv2d(2, 10, kernel_size=5, bias=False)
-        self.conv3 = nn.Conv2d(15, num_class, kernel_size=5, bias=False)
-        self.activation = nn.ReLU(inplace=True)
+        self.conv0 = nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False)
+        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False)
+        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=1, bias=False)
+        self.conv3 = nn.Conv2d(in_channels, num_class, kernel_size=1, bias=False)
         self.activation = nn.ReLU(inplace=True)
     def forward(self, x):
         self.x0 = self.conv0(x)
         self.x1 = self.conv1(self.x0)
-        print(id(self.conv2(self.x0)))
-        self.x2 = self.conv2(self.x0)
-        print(id(self.x2))
-        self.x4 = self.activation(self.x2)
-        print(torch.equal(self.x2, self.x4))
-        self.x3 = torch.cat([self.x1, self.x4], dim=1)
-        return self.conv3(self.x3)
+        self.x2 = self.conv2(x)
+        self.x3 = self.activation(self.x2)
+        self.x4 = self.conv3(self.x3 + self.x1)
+        return self.x4
 
 in_channels = 36
 num_class = 10
-model = simple_model(in_channels, num_class)
-x = torch.full((1, in_channels, 18, 18), -1.0)
+model = simple_model(in_channels, num_class).to('cuda')
+x = torch.rand(1, in_channels, 18, 18).to('cuda')
 
 output = model(x)
 
-result = check_tensor_in_concat(model.x2, model.x3, model)
-print("x3 contains x2:", result)
-'''
+get_layer_output_tensor = {}
+get_layer_output_tensor[model.conv0] = model.x0
+get_layer_output_tensor[model.conv1] = model.x1
+get_layer_output_tensor[model.conv2] = model.x2
+get_layer_output_tensor[model.activation] = model.x3
+get_layer_output_tensor[model.conv3] = model.x4
+
+result = check_tensor_residual(model.x0, model.x3 + model.x1, get_layer_output_tensor)
+print("x3 + x1 contains x1:", result)'''
+
+
 '''import torch
 x1 = torch.rand(1, 3, 32, 32)
 print(id(x1))

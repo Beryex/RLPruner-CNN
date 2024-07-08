@@ -11,6 +11,10 @@ import torch.nn as nn
 import queue
 
 
+PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d, nn.Linear)
+CONV_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d)
+
+
 def get_network(net: str, 
                 in_channels: int, 
                 num_class: int):
@@ -42,9 +46,9 @@ def extract_prunable_layers_info(model: nn.Module):
     def recursive_extract_prunable_layers_info(module, parent=None):
         children = list(module.children())
         for child in children:
-            if isinstance(child, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d, nn.Linear)):
+            if isinstance(child, PRUNABLE_LAYERS):
                 prunable_layers.append(child)
-                if isinstance(child,(nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d)):
+                if isinstance(child, CONV_LAYERS):
                     output_dims.append(child.out_channels)
                 elif isinstance(child, nn.Linear):
                     output_dims.append(child.out_features)
@@ -87,6 +91,9 @@ def extract_prunable_layer_dependence(model, x, prunable_layers):
         input = input[0]
         # ignore activation layer that operates tensor in_place and do not change tensor id
         if not list(layer.children()):
+            # the reason why we not apply layer.inplace == True is for nn.Dropout() layer, 
+            # after training, even it not have inplace==True, it will skip this layer 
+            # during inference, resulting into an equivalent inplace operations
             if not (hasattr(layer, 'inplace')):
                 activation_hook_used = False
                 get_layer_input_tensor[layer] = input
@@ -110,44 +117,48 @@ def extract_prunable_layer_dependence(model, x, prunable_layers):
     assert len(get_layer_output_tensor.values()) == len(set(get_layer_output_tensor.values()))
     
     # handle special layer
-    for i, target_layer in enumerate(all_layers):
-        if not (hasattr(target_layer, 'inplace') ):
-            target_tensor = get_layer_output_tensor[target_layer]
-            for layer, tensor in get_layer_input_tensor.items():
-                if id(target_tensor) in get_tensor_recipients and layer in get_tensor_recipients[id(target_tensor)]:
+    for i, output_layer in enumerate(all_layers):
+        # same reason as above
+        if not (hasattr(output_layer, 'inplace') ):
+            output_tensor = get_layer_output_tensor[output_layer]
+            for input_layer, input_tensor in get_layer_input_tensor.items():
+                if id(output_tensor) in get_tensor_recipients and input_layer in get_tensor_recipients[id(output_tensor)]:
                     continue
-                if isinstance (layer, nn.Linear) and check_tensor_use_view(input_tensor=target_tensor, target_tensor=tensor):
+                if isinstance (input_layer, nn.Linear) and check_tensor_use_view(input_tensor=output_tensor, target_tensor=input_tensor):
                     # case 1: use x = x.view(x.size()[0], -1) before linear
-                    if id(target_tensor) not in get_tensor_recipients:
+                    if id(output_tensor) not in get_tensor_recipients:
                         print("1")
-                        print(layer)
-                        get_tensor_recipients[id(target_tensor)] = [layer]
+                        print(input_layer)
+                        get_tensor_recipients[id(output_tensor)] = [input_layer]
                     else:
                         print("2")
-                        print(layer)
-                        get_tensor_recipients[id(target_tensor)].append(layer)
+                        print(input_layer)
+                        get_tensor_recipients[id(output_tensor)].append(input_layer)
                     break
-                elif check_tensor_in_concat(input_tensor=target_tensor, component_tensor=tensor, model=model):
+                elif check_tensor_in_concat(input_tensor=output_tensor, component_tensor=input_tensor, model=model):
                     # case 2: use torch.cat
-                    if id(target_tensor) not in get_tensor_recipients:
+                    if id(output_tensor) not in get_tensor_recipients:
                         print("3")
-                        print(layer)
-                        get_tensor_recipients[id(target_tensor)] = [layer]
+                        print(input_layer)
+                        get_tensor_recipients[id(output_tensor)] = [input_layer]
                     else:
                         print("4")
-                        print(layer)
-                        get_tensor_recipients[id(target_tensor)].append(layer)
+                        print(input_layer)
+                        get_tensor_recipients[id(output_tensor)].append(input_layer)
                     break
-                elif target_tensor.shape == tensor.shape and check_tensor_residual(input_tensor=target_tensor, target_tensor=tensor, get_layer_output_tensor=get_layer_output_tensor):
-                    # case 3: use residual short cut
-                    if id(target_tensor) not in get_tensor_recipients:
+                elif input_tensor.grad_fn.__class__.__name__ == 'AddBackward0' and check_tensor_residual(input_tensor=output_tensor, target_tensor=input_tensor, get_layer_output_tensor=get_layer_output_tensor):
+                    # case 3: use residual short cut, assume residual as last operation 
+                    # before going into next Conv or Linear
+                    # e.g. use nn.ReLU(inplace=True)(self.residual_function(x)) + nn.ReLU(inplace=True)(self.shortcut(x))
+                    # instead of nn.ReLU(inplace=True)(self.residual_function(x) + self.shortcut(x)) 
+                    if id(output_tensor) not in get_tensor_recipients:
                         print("5")
-                        print(layer)
-                        get_tensor_recipients[id(target_tensor)] = [layer]
+                        print(input_layer)
+                        get_tensor_recipients[id(output_tensor)] = [input_tensor]
                     else:
                         print("6")
-                        print(layer)
-                        get_tensor_recipients[id(target_tensor)].append(layer)
+                        print(input_layer)
+                        get_tensor_recipients[id(output_tensor)].append(input_tensor)
                     break
     
     for i, layer in enumerate(prunable_layers):
@@ -175,21 +186,13 @@ def extract_prunable_layer_dependence(model, x, prunable_layers):
     return next_layers
 
 def check_tensor_in_concat(input_tensor, component_tensor, model):
-    input_tensor.retain_grad()
-    component_tensor.retain_grad()
-
-    grad_output = torch.ones_like(component_tensor)
-    
-    model.zero_grad()
-    component_tensor.backward(grad_output, retain_graph=True)
-    
-    if input_tensor.grad is not None and torch.any(input_tensor.grad != 0).item():
-        if get_tensor_idx_at_next_layer(input_tensor, component_tensor) == -1:
-            return False
-        else:
-            return True
-    else:
+    if input_tensor.shape[2:] != component_tensor.shape[2:]:
         return False
+    
+    if get_tensor_idx_at_next_layer(input_tensor, component_tensor) == -1:
+        return False
+    else:
+        return True
 
 def get_tensor_idx_at_next_layer(input_tensor, component_tensor):
     # assmue always cat at dim=1
@@ -215,7 +218,17 @@ def check_tensor_use_view(input_tensor, target_tensor):
     return torch.equal(input_tensor.view(input_tensor.size(0), -1), target_tensor.view(target_tensor.size(0), -1))
 
 def check_tensor_residual(input_tensor, target_tensor, get_layer_output_tensor):
-    return (target_tensor - input_tensor) in get_layer_output_tensor
+    if target_tensor.shape != input_tensor.shape:
+        return False
+    
+    residual_tensor = target_tensor - input_tensor
+    for tensor in get_layer_output_tensor.values():
+        if tensor.shape != residual_tensor.shape:
+            continue
+        elif torch.allclose(tensor, residual_tensor, atol=1e-6):
+            return True
+    return False
+
 
 def map_layers(original_net, generated_net):
     mapping = {}
@@ -228,10 +241,6 @@ def copy_prunable_and_next_layers(original_prunable_layuers, original_next_layer
     generated_prunable_layers = []
     generated_next_layers = []
     for layer in original_prunable_layuers:
-        if layer not in mapping:
-            print(original_next_layers)
-            print(original_prunable_layuers)
-            print(mapping)
         generated_prunable_layers.append(mapping[layer])
     for layer_idx in range(len(original_next_layers)):
         new_layers_info = []

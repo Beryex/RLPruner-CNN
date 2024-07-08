@@ -28,7 +28,10 @@ class BottleNeck(nn.Module):
             )
 
     def forward(self, x):
-        return nn.ReLU(inplace=True)(self.residual_function(x) + self.shortcut(x))
+        if self.shortcut == nn.Sequential():
+            return nn.ReLU(inplace=True)(self.residual_function(x)) + nn.ReLU(inplace=True)(x)
+        else:
+            return nn.ReLU(inplace=True)(self.residual_function(x)) + nn.ReLU(inplace=True)(self.shortcut(x))
     
     def prune_mediate_kernel(self):
         layer_choices = torch.tensor([0, 3])
