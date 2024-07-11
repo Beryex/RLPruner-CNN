@@ -1,256 +1,21 @@
+"""
+Copyright (c) 2024 Beryex, University of Illinois Urbana-Champaign
+All rights reserved.
+
+This code is licensed under the MIT License.
+"""
+
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional
-from torch import Tensor
+import queue
 
 
-class Custom_Conv2d(nn.Module):
-    def __init__(self, 
-                 in_channels: Optional[int] = None, 
-                 out_channels: Optional[int] = None, 
-                 kernel_size: Optional[torch.Size] = None, 
-                 stride: int = 1, 
-                 padding: int = 0, 
-                 bias: bool = True, 
-                 base_conv_layer: Optional[nn.Conv2d] = None):
-        super(Custom_Conv2d, self).__init__()
-        if base_conv_layer is None:
-            if in_channels is None or out_channels is None or kernel_size is None:
-                raise ValueError("Custom_Conv2d requires in_channels, out_channels, and kernel_size when no base_conv_layer is provided")
-            temp_conv = nn.Conv2d(in_channels = in_channels, out_channels = out_channels, kernel_size = kernel_size, stride = stride, padding = padding, bias = bias)
-            self.in_channels = in_channels
-            self.out_channels = out_channels
-            self.kernel_size = kernel_size
-            self.weight = nn.Parameter(temp_conv.weight.data.detach())
-            self.weight_shape = temp_conv.weight.shape
-            if bias == True:
-                self.bias = nn.Parameter(temp_conv.bias.data.detach())
-            else:
-                self.bias = None
-            self.stride = stride
-            self.padding = padding
-        else:
-            if not isinstance(base_conv_layer, nn.Conv2d):
-                raise TypeError("base_conv_layer must be an instance of nn.Conv2d or its subclass")
-            self.in_channels = base_conv_layer.in_channels
-            self.out_channels = base_conv_layer.out_channels
-            self.kernel_size = base_conv_layer.kernel_size
-            self.weight = nn.Parameter(base_conv_layer.weight.data.detach())
-            self.weight_shape = base_conv_layer.weight.shape
-            if base_conv_layer.bias is not None:
-                self.bias = nn.Parameter(base_conv_layer.bias.data.detach())
-            else:
-                self.bias = None
-            self.stride = base_conv_layer.stride
-            self.padding = base_conv_layer.padding
-        
-        # define parameter for weight sharing
-        self.weight_indices = None
-        self.original_weight = None
-    
-    def __repr__(self):
-        return f'Custom_Conv2d({self.in_channels}, {self.out_channels}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, bias={False if self.bias is None else True})'
-    
-    def forward(self, 
-                x: Tensor):
-        if self.weight_indices is None:
-            actual_weight = self.weight
-        else:
-            unpacked_tensor = self.weight_indices.unpack_tensors()
-            actual_weight = self.weight[unpacked_tensor].view(self.weight_shape)
-        actual_weight = actual_weight.to(x.device)
-        return F.conv2d(x, actual_weight, self.bias, self.stride, self.padding)
+PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d, nn.Linear)
+NORM_LAYERS = (nn.BatchNorm2d)
+CONV_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d)
+TENSOR_DIFFERENCE_THRESHOLD = 1e-4
 
-    def prune_filter(self):
-        if self.weight_indices is None:
-            # weight is still normal, not cluster
-            if self.out_channels - 1 == 0:
-                return None
-            weight_variances = torch.var(self.weight.data, dim = [1, 2, 3])
-            # weight_L2norm = torch.norm(self.weight.data, p=2, dim= [1, 2, 3])
-            target_kernel = torch.argmin(weight_variances).item()
-            with torch.no_grad():
-                self.weight.data = torch.cat([self.weight.data[:target_kernel], self.weight.data[target_kernel+1:]], dim=0)
-                if self.bias is not None:
-                    self.bias.data = torch.cat([self.bias.data[:target_kernel], self.bias.data[target_kernel+1:]])
-            self.out_channels -= 1
-            self.weight_shape = self.weight.shape
-            if self.out_channels != self.weight.shape[0]:
-                raise ValueError(f'Conv2d layer out_channels {self.out_channels} and weight dimension {self.weight.shape[0]} mismath')
-            return target_kernel
-    
-    def decre_input(self, 
-                    target_kernel: int):
-        if target_kernel is None:
-            return
-        with torch.no_grad():
-            kept_indices = [i for i in range(self.in_channels) if i != target_kernel]
-            self.weight.data = self.weight.data[:, kept_indices, :, :]
-        self.in_channels -= 1
-        self.weight_shape = self.weight.shape
-        if self.in_channels != self.weight.shape[1]:
-            raise ValueError(f'Conv2d layer in_channels {self.in_channels} and weight dimension {self.weight.shape[1]} mismath')
-
-
-class Custom_Linear(nn.Module):
-    def __init__(self, 
-                 in_features: Optional[int] = None, 
-                 out_features: Optional[int] = None, 
-                 bias: bool = True, 
-                 base_linear_layer: Optional[nn.Linear] = None):
-        super(Custom_Linear, self).__init__()
-        if base_linear_layer is None:
-            if in_features is None or out_features is None:
-                raise ValueError("Custom_Linear requires in_features, out_features when no base_linear_layer is provided")
-            temp_linear = nn.Linear(in_features = in_features, out_features = out_features, bias = bias)
-            self.in_features = in_features
-            self.out_features = out_features
-            self.weight = nn.Parameter(temp_linear.weight.data.detach())
-            self.weight_shape = temp_linear.weight.shape
-            if bias == True:
-                self.bias = nn.Parameter(temp_linear.bias.data.detach())
-            else:
-                self.bias = None
-        else:
-            if not isinstance(base_linear_layer, nn.Linear):
-                raise TypeError("base_linear_layer must be an instance of nn.Linear or its subclass")
-            self.weight = nn.Parameter(base_linear_layer.weight.data.detach())
-            self.weight_shape = base_linear_layer.weight.shape
-            if base_linear_layer.bias != None:
-                self.bias = nn.Parameter(base_linear_layer.bias.data.detach())
-            else:
-                self.bias = None
-
-        # define parameter for weight sharing
-        self.weight_indices = None
-        self.original_weight = None
-    
-    def __repr__(self):
-        return f'Custom_Linear(in_features={self.in_features}, out_features={self.out_features}, bias={False if self.bias is None else True})'
-    
-    def forward(self, 
-                x: Tensor):
-        if self.weight_indices is None:
-            actual_weight = self.weight
-        else:
-            unpacked_tensor = self.weight_indices.unpack_tensors()
-            actual_weight = self.weight[unpacked_tensor].view(self.weight_shape)
-        actual_weight = actual_weight.to(x.device)
-        return F.linear(x, actual_weight, self.bias)
-    
-
-    def prune_filter(self):
-        if self.weight_indices is None:
-            # weight is still normal, not cluster
-            if self.out_features - 1 == 0:
-                return None
-            weight_variances = torch.var(self.weight.data, dim = 1)
-            # weight_L2norm = torch.norm(self.weight.data, p=2, dim=1)
-            target_neuron = torch.argmin(weight_variances).item()
-            with torch.no_grad():
-                self.weight.data = torch.cat([self.weight.data[:target_neuron], self.weight.data[target_neuron+1:]], dim=0)
-                if self.bias is not None:
-                    self.bias.data = torch.cat([self.bias.data[:target_neuron], self.bias.data[target_neuron+1:]])
-            self.out_features -= 1
-            self.weight_shape = self.weight.shape
-            if self.out_features != self.weight.shape[0]:
-                raise ValueError(f'Linear layer out_channels {self.out_features} and weight dimension {self.weight.shape[0]} mismath')
-            return target_neuron
-    
-    def decre_input(self, 
-                    new_in_features: int, 
-                    start_index: int, 
-                    end_index: int):
-        with torch.no_grad():
-            self.weight.data = torch.cat([self.weight.data[:, :start_index], self.weight.data[:, end_index:]], dim=1)
-            self.bias.data = self.bias.data
-        self.in_features = new_in_features
-        self.weight_shape = self.weight.shape
-        if self.in_features != self.weight.shape[1]:
-            raise ValueError(f'Linear layer in_channels {self.in_features} and weight dimension {self.weight.shape[1]} mismath')
-
-
-class packable_tensors():
-    def __init__(self, target_tensor: Tensor, num_clusters: int):
-        self.target_tensor = target_tensor
-        self.num_clusters = num_clusters
-        self.original_dim = target_tensor.shape[0]
-
-    def pack_tensors(self):
-        input_tensor = self.target_tensor
-        num_clusters = self.num_clusters
-        if input_tensor.dtype != torch.int32 and input_tensor.dtype != torch.int64:
-            raise TypeError(f"Unexpected input tensor dtype: {input_tensor.dtype} for packing tensor")
-        # note that max value of num_clusters is 2048, which is limited by faiss k-means method
-        if num_clusters <= 2 ** 11 and num_clusters > 2 ** 8:
-            packed_tensors = input_tensor.to(torch.int16)
-        elif num_clusters <= 2 ** 8 and num_clusters > 2 ** 4:
-            input_tensor_original_dim = input_tensor.shape[0]
-            packed_tensors_dim = input_tensor_original_dim // 2 + (1 if input_tensor_original_dim % 2 != 0 else 0)
-            packed_tensors = torch.zeros(packed_tensors_dim, dtype=torch.int16)
-            for i in range(0, input_tensor_original_dim - 1, 2):
-                packed_tensors[i // 2] = ((input_tensor[i] & 0xFF) << 8) | (input_tensor[i+1] & 0xFF)
-            if input_tensor_original_dim % 2 != 0:
-                packed_tensors[-1] = (input_tensor[-1] & 0xFF) << 8
-        elif num_clusters <= 2 ** 4:
-            input_tensor_original_dim = input_tensor.shape[0]
-            packed_tensors_dim = input_tensor_original_dim // 2 + (1 if input_tensor_original_dim % 2 != 0 else 0)
-            packed_tensors = torch.zeros(packed_tensors_dim, dtype=torch.int8)
-            for i in range(0, input_tensor_original_dim - 1, 2):
-                packed_tensors[i // 2] = ((input_tensor[i] & 0x0F) << 4) | (input_tensor[i+1] & 0x0F)
-            if input_tensor_original_dim % 2 != 0:
-                packed_tensors[-1] = (input_tensor[-1] & 0x0F) << 4
-        self.target_tensor = packed_tensors
-
-    def unpack_tensors(self):
-        input_tensor = self.target_tensor
-        num_clusters = self.num_clusters
-        original_dim = self.original_dim
-        # note that max value of num_clusters is 2048, which is limited by faiss k-means method
-        # target dtype is int32 as in forward the indexing only support int32 and does NOT support int16 or int8
-        if num_clusters <= 2 ** 11 and num_clusters > 2 ** 8:
-            unpacked_tensors = input_tensor.to(torch.int32)
-        elif num_clusters <= 2 ** 8 and num_clusters > 2 ** 4:
-            if input_tensor.dtype != torch.int16:
-                raise TypeError(f"Unexpected input tensor dtype: {input_tensor.dtype} given {num_clusters} clusters number")
-            unpacked_tensors = torch.zeros(original_dim, dtype=torch.int32)
-            for i in range(0, input_tensor.shape[0] - 1):
-                unpacked_tensors[2 * i] = (input_tensor[i] & 0xFF00) >> 8
-                unpacked_tensors[2 * i + 1] = (input_tensor[i] & 0xFF)
-            if original_dim % 2 == 0:
-                unpacked_tensors[-1] = (input_tensor[-1] & 0xFF00) >> 8
-            else:
-                unpacked_tensors[-2] = (input_tensor[-1] & 0xFF00) >> 8
-                unpacked_tensors[-1] = (input_tensor[-1] & 0xFF)
-        elif num_clusters <= 2 ** 4:
-            if input_tensor.dtype != torch.int8 and input_tensor.dtype != torch.uint8:
-                raise TypeError(f"Unexpected input tensor dtype: {input_tensor.dtype} given {num_clusters} clusters number")
-            unpacked_tensors = torch.zeros(original_dim, dtype=torch.int32)
-            for i in range(0, input_tensor.shape[0] - 1):
-                unpacked_tensors[2 * i] = (input_tensor[i] & 0xF0) >> 4
-                unpacked_tensors[2 * i + 1] = (input_tensor[i] & 0x0F)
-            if original_dim % 2 == 0:
-                unpacked_tensors[-1] = (input_tensor[-1] & 0xF0) >> 4
-            else:
-                unpacked_tensors[-2] = (input_tensor[-1] & 0xF0) >> 4
-                unpacked_tensors[-1] = (input_tensor[-1] & 0x0F)
-        return unpacked_tensors
-
-
-def count_custom_conv2d(m: Custom_Conv2d, 
-                        x: Tensor, 
-                        y: Tensor):
-    x = x[0]
-    kernel_ops = m.weight_shape[2] * m.weight_shape[3]
-    total_ops = y.nelement() * (m.weight_shape[1] * kernel_ops) # assume not using group convolution
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
-
-def count_custom_linear(m: Custom_Linear, 
-                        x: Tensor, 
-                        y: Tensor):
-    total_ops = y.nelement() * x[0].nelement() / y.size(0)
-    m.total_ops += torch.DoubleTensor([int(total_ops)])
 
 def get_network(net: str, 
                 in_channels: int, 
@@ -264,7 +29,7 @@ def get_network(net: str,
     elif net == 'googlenet':
         from models.googlenet import GoogleNet
         ret = GoogleNet(in_channels, num_class)
-    elif net == 'resnet':
+    elif net == 'resnet50':
         from models.resnet import ResNet50
         ret = ResNet50(in_channels, num_class)
     elif net == 'unet':
@@ -275,23 +40,250 @@ def get_network(net: str,
 
     return ret
 
-def get_net_class(net: str):
-    if net == 'vgg16':
-        from models.vgg import VGG16
-        net_class = VGG16
-    elif net == 'lenet5':
-        from models.lenet import LeNet5
-        net_class = LeNet5
-    elif net == 'googlenet':
-        from models.googlenet import GoogleNet
-        net_class = GoogleNet
-    elif net == 'resnet':
-        from models.resnet import ResNet50
-        net_class = ResNet50
-    elif net == 'unet':
-        from models.unet import UNet
-        net_class = UNet
-    else:
-        net_class = None
 
-    return net_class
+def extract_prunable_layers_info(model: nn.Module):
+    prunable_layers = []
+    output_dims = []
+
+    def recursive_extract_prunable_layers_info(module, parent=None):
+        children = list(module.children())
+        for child in children:
+            if isinstance(child, PRUNABLE_LAYERS):
+                prunable_layers.append(child)
+                if isinstance(child, CONV_LAYERS):
+                    output_dims.append(child.out_channels)
+                elif isinstance(child, nn.Linear):
+                    output_dims.append(child.out_features)
+            recursive_extract_prunable_layers_info(child, module)
+    
+    recursive_extract_prunable_layers_info(model)
+    
+    # remove the ouput layer as this layer out dim should equal to class num and can not be pruned
+    # assumer the output layer is the last defined
+    del prunable_layers[-1]
+    del output_dims[-1]
+
+    total_output_dim = sum(output_dims)
+    filter_distribution = [dim / total_output_dim for dim in output_dims]
+    
+    return torch.tensor(filter_distribution), total_output_dim, prunable_layers
+
+
+def extract_prunable_layer_dependence(model, x, prunable_layers):
+    handles = []
+    all_layers = []
+    not_inplace_layers = []
+    get_tensor_recipients = {}
+    get_layer_input_tensor = {}
+    get_layer_output_tensor = {}
+
+    def recursive_collect_all_layers(module, parent=None):
+        children = list(module.children())
+        for layer in children:
+            if not list(layer.children()):
+                all_layers.append(layer)
+            recursive_collect_all_layers(layer, module)
+    
+    recursive_collect_all_layers(model)
+
+    def forward_hook(layer, input, output):
+        input = input[0]
+        # ignore activation layer that operates tensor in_place and not change tensor id
+        if not list(layer.children()):
+            if id(input) != id(output):
+                not_inplace_layers.append(layer)
+                get_layer_input_tensor[layer] = input
+                # we add the 
+                get_layer_output_tensor[layer] = output.add_(torch.randn_like(output))
+                if id(input) not in get_tensor_recipients:
+                    get_tensor_recipients[id(input)] = [layer]
+                else:
+                    get_tensor_recipients[id(input)].append(layer)
+
+    for layer in all_layers:
+        handle = layer.register_forward_hook(forward_hook)
+        handles.append(handle)
+    
+    model.eval()
+    model(x)
+
+    for handle in handles:
+        handle.remove()
+    
+    # check whether outputs during the inference are all unique respectively
+    for layer1, tensor1 in get_layer_output_tensor.items():
+        for layer2, tensor2 in get_layer_output_tensor.items():
+            if (id(tensor1) != id(tensor2) 
+                and tensor1.shape == tensor2.shape 
+                and torch.allclose(tensor1, tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD)):
+                raise ValueError(f'{layer1} and {layer2} has the same value output')
+    
+    # handle special layer
+    for output_layer, output_tensor in get_layer_output_tensor.items():
+        for input_layer, input_tensor in get_layer_input_tensor.items():
+            if id(output_tensor) in get_tensor_recipients and input_layer in get_tensor_recipients[id(output_tensor)]:
+                continue
+            if isinstance (input_layer, nn.Linear) and check_tensor_use_view(input_tensor=output_tensor, target_tensor=input_tensor):
+                # case 1: use x = x.view(x.size()[0], -1) before linear
+                if id(output_tensor) not in get_tensor_recipients:
+                    get_tensor_recipients[id(output_tensor)] = [input_layer]
+                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
+                    get_tensor_recipients[id(output_tensor)].append(input_layer)
+            elif check_tensor_in_concat(input_tensor=output_tensor, component_tensor=input_tensor):
+                # case 2: use torch.cat
+                if id(output_tensor) not in get_tensor_recipients:
+                    get_tensor_recipients[id(output_tensor)] = [input_layer]
+                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
+                    get_tensor_recipients[id(output_tensor)].append(input_layer)
+            elif check_tensor_addition(input_tensor=output_tensor, component_tensor=input_tensor, get_layer_output_tensor=get_layer_output_tensor):
+                # case 3: input_tensor = output_tensor + another output_tensor
+                if id(output_tensor) not in get_tensor_recipients:
+                    get_tensor_recipients[id(output_tensor)] = [input_layer]
+                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
+                    get_tensor_recipients[id(output_tensor)].append(input_layer)
+            elif check_tensor_residual(input_tensor=output_tensor, component_tensor=input_tensor, get_layer_input_tensor=get_layer_input_tensor):
+                # case 4: use residual short cut: input_tensor = output_tensor + another input_tensor
+                if id(output_tensor) not in get_tensor_recipients:
+                    get_tensor_recipients[id(output_tensor)] = [input_layer]
+                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
+                    get_tensor_recipients[id(output_tensor)].append(input_layer)
+
+    # linke each layer's next layers
+    next_layers = [[] for _ in range(len(prunable_layers))]
+    for i, layer in enumerate(prunable_layers):
+        relevant_tensors = queue.Queue()
+        relevant_tensors.put(get_layer_output_tensor[layer])
+        while not relevant_tensors.empty():
+            cur_tensor = relevant_tensors.get()     # this will remove first tensor and get it
+            cur_tensor_recipients = get_tensor_recipients[id(cur_tensor)]
+            for recipient in cur_tensor_recipients:
+                component_tensor = get_layer_input_tensor[recipient]
+                next_layers[i].append([recipient, get_tensor_idx_at_next_layer(input_tensor=cur_tensor, component_tensor=component_tensor)])
+                if not isinstance(recipient, PRUNABLE_LAYERS):
+                    relevant_tensors.put(get_layer_output_tensor[recipient])
+    
+    # build mask for each prunable layer to indicate the residual layer 
+    # cluster 0 means this layer is independent and can be pruned directly
+    # any value greater than 1 means this layer is in a residual cluster with 
+    # the same that value and all layers inside a group should be pruned together
+    layer_cluster_mask = [0 for _ in range(len(prunable_layers))]
+    cur_cluster_mask = 1
+    involved_tensors = []
+    for layer_idx, layer in enumerate(prunable_layers):
+        for next_layer_info in next_layers[layer_idx]:
+            next_layer = next_layer_info[0]
+            offset = next_layer_info[1]
+            if isinstance(next_layer, NORM_LAYERS):
+                layer = next_layer
+            elif isinstance(next_layer, (CONV_LAYERS, nn.AdaptiveAvgPool2d)):
+                if offset == -1:
+                    # if the connection offset mismatch, there exists residual layer
+                    # check if it is previous residual cluster
+                    if len(involved_tensors) == 0:
+                        involved_tensors.append(get_layer_output_tensor[layer])
+                        involved_tensors.append(get_layer_input_tensor[next_layer])
+                        layer_cluster_mask[layer_idx] = cur_cluster_mask
+                    else:
+                        output_tensor1 = get_layer_output_tensor[layer]
+                        component_tensor = get_layer_input_tensor[next_layer]
+                        target_tensor = component_tensor - output_tensor1
+                        in_previous_cluster = False
+                        for output_tensor2 in involved_tensors:
+                            if (target_tensor.shape == output_tensor2.shape and
+                                torch.allclose(target_tensor, output_tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD)):
+                                # indicates the new layer is still in prevuous residual cluster
+                                involved_tensors.append(get_layer_output_tensor[layer])
+                                involved_tensors.append(get_layer_input_tensor[next_layer])
+                                layer_cluster_mask[layer_idx] = cur_cluster_mask
+                                in_previous_cluster = True
+                                break
+                        if in_previous_cluster == False:
+                            # indicates the new layer is starting a new cluster
+                            cur_cluster_mask += 1
+                            involved_tensors = []
+                            involved_tensors.append(get_layer_output_tensor[layer])
+                            involved_tensors.append(get_layer_input_tensor[next_layer])
+                            layer_cluster_mask[layer_idx] = cur_cluster_mask
+    
+    # broadcast tensor idx offset at next linear layer
+    for ith_next_layers in next_layers:
+        pre_idx_offset = 0
+        for next_layer_info in ith_next_layers:
+            if next_layer_info[1] > 0:
+                pre_idx_offset = next_layer_info[1]
+            else:
+                if isinstance(next_layer_info[0], nn.Linear):
+                    next_layer_info[1] = pre_idx_offset
+
+    return next_layers, layer_cluster_mask
+
+def check_tensor_in_concat(input_tensor, component_tensor):
+    if input_tensor.shape[2:] != component_tensor.shape[2:]:
+        return False
+    
+    if get_tensor_idx_at_next_layer(input_tensor, component_tensor) == -1:
+        return False
+    else:
+        return True
+
+def get_tensor_idx_at_next_layer(input_tensor, component_tensor):
+    # assmue always cat at dim=1
+    dim=1
+    cat_size = input_tensor.size(dim)
+    flatten_input_tensor = input_tensor.view(input_tensor.size(0), -1)
+    flatten_cat_size = flatten_input_tensor.size(dim)
+    max_idx = component_tensor.size(dim) - cat_size + 1
+    for i in range(max_idx):
+        # case 1: conv -> conv, linear -> linear
+        split = component_tensor[:, i:i+cat_size]
+        if torch.equal(input_tensor, split):
+            return i
+    max_idx = component_tensor.size(dim) - flatten_cat_size + 1
+    for i in range(max_idx):
+        # case 2: conv -> linear
+        split = component_tensor[:, i:i+flatten_cat_size]
+        if torch.equal(flatten_input_tensor, split):
+            return i
+    return -1
+
+def check_tensor_use_view(input_tensor, target_tensor):
+    return torch.equal(input_tensor.view(input_tensor.size(0), -1), target_tensor.view(target_tensor.size(0), -1))
+
+def check_tensor_addition(input_tensor, component_tensor, get_layer_output_tensor):
+    if component_tensor.shape != input_tensor.shape:
+        return False
+    
+    residual_tensor = component_tensor - input_tensor
+    for tensor in get_layer_output_tensor.values():
+        if tensor.shape == residual_tensor.shape:
+            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+    return False
+
+def check_tensor_residual(input_tensor, component_tensor, get_layer_input_tensor):
+    if component_tensor.shape != input_tensor.shape:
+        return False
+    
+    residual_tensor = component_tensor - input_tensor
+    for tensor in get_layer_input_tensor.values():
+        if tensor.shape == residual_tensor.shape:
+            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+    return False
+
+def adjust_prune_distribution_for_cluster(prune_distribution, layer_cluster_mask):
+    cluster_total_value = {}
+    cluster_layer_number = {}
+    for idx, mask in enumerate(layer_cluster_mask):
+        if mask > 0:
+            if mask not in cluster_total_value:
+                cluster_total_value[mask] = prune_distribution[idx].item()
+                cluster_layer_number[mask] = 1
+            else:
+                cluster_total_value[mask] += prune_distribution[idx].item()
+                cluster_layer_number[mask] += 1
+    for idx, mask in enumerate(layer_cluster_mask):
+        if mask > 0:
+            prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
+    return prune_distribution
+    
