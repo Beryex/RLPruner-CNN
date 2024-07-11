@@ -1,22 +1,31 @@
 
 import torch
-from utils import extract_prunable_layer_dependence, extract_prunable_layers_info
+from utils import extract_prunable_layer_dependence, extract_prunable_layers_info, adjust_prune_distribution_for_cluster
 
 device = 'cuda'
-model = torch.load('./models/vgg16_cifar100_1720125382_original.pth').to(device)
+model = torch.load('./models/resnet50_cifar100_1720575441_original.pth').to(device)
 from models.vgg import VGG16
+from models.lenet import LeNet5
 from models.googlenet import GoogleNet
 from models.resnet import ResNet50
+from models.unet import UNet
 
 model = ResNet50(3, 100).to(device)
-print(model)
 sample_input = torch.rand(1, 3, 32, 32).to(device)
 sample_input.requires_grad = True # used to extract dependence
 
 prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(model)
-print(prune_distribution)
-next_layers = extract_prunable_layer_dependence(model=model, x=sample_input, prunable_layers=prunable_layers)
+next_layers, cur_cluster_mask = extract_prunable_layer_dependence(model=model, x=sample_input, prunable_layers=prunable_layers)
 print(next_layers)
+print(cur_cluster_mask)
+print(prune_distribution)
+for idx, layer in enumerate(prunable_layers):
+    print("\n")
+    print(layer)
+    for n in next_layers[idx]:
+        print(n[0])
+prune_distribution = adjust_prune_distribution_for_cluster(prune_distribution, cur_cluster_mask)
+print(prune_distribution)
 
 '''from utils import extract_prunable_layers_info, extract_prunable_layer_dependence
 import torch

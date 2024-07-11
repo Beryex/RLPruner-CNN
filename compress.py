@@ -17,7 +17,7 @@ except ImportError:
 import logging
 
 from conf import settings
-from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, map_layers, copy_prunable_and_next_layers, 
+from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, adjust_prune_distribution_for_cluster,
                    get_dataloader, setup_logging, Prune_agent, torch_set_random_seed, torch_resume_random_seed)
 
 
@@ -158,8 +158,7 @@ def get_best_generated_architecture(original_net_with_info: tuple,
         sample_trajectory(cur_step=0,
                         original_net_with_info=original_net_with_info,
                         prune_agent=prune_agent,
-                        Q_value_dict=Q_value_dict,
-                        prev_prune_counter_sum=0)
+                        Q_value_dict=Q_value_dict)
         logging.info(f'Generated net Q value List: {Q_value_dict[0]}')
         logging.info(f'Current new net Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
         logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
@@ -193,8 +192,7 @@ def get_best_generated_architecture(original_net_with_info: tuple,
 def sample_trajectory(cur_step: int, 
                       original_net_with_info: tuple,
                       prune_agent: Prune_agent, 
-                      Q_value_dict: dict, 
-                      prev_prune_counter_sum: int):
+                      Q_value_dict: dict):
     # sample trajectory using DFS
     if cur_step == settings.RL_MAX_SAMPLE_STEP:
         return
@@ -205,30 +203,20 @@ def sample_trajectory(cur_step: int,
     with tqdm(total=cur_generate_num, desc=f'Generated architectures', unit='model', leave=False) as pbar:
         for model_id in range(cur_generate_num):
             # generate architecture
-            original_net, original_prunable_layers, original_next_layers = original_net_with_info
-            generated_net = copy.deepcopy(original_net).to(device)
-            mapping = map_layers(original_net=original_net, generated_net=generated_net)
-            generated_prunable_layers, generated_next_layers = copy_prunable_and_next_layers(original_prunable_layuers=original_prunable_layers, 
-                                                                                             original_next_layers=original_next_layers,
-                                                                                             mapping=mapping)
-            prune_distribution_action, prune_counter = prune_agent.update_architecture(prunable_layers=generated_prunable_layers, 
+            generated_net_with_info = copy.deepcopy(original_net_with_info)
+            generated_net, generated_prunable_layers, generated_next_layers = generated_net_with_info
+            prune_distribution_action = prune_agent.update_architecture(prunable_layers=generated_prunable_layers, 
                                                                                        next_layers=generated_next_layers)
             generated_net_with_info = (generated_net, generated_prunable_layers, generated_next_layers)
 
             # evaluate generated architecture
-            cur_prune_counter_sum = prune_counter.int() + prev_prune_counter_sum
-            tuple_key = tuple(cur_prune_counter_sum.tolist())
-            if tuple_key not in prune_agent.Reward_cache:
-                top1_acc, _, _ = eval_network(target_net=generated_net, target_eval_loader=test_loader, loss_function=loss_function)
-                Q_value_dict[cur_step][model_id] = top1_acc
-                prune_agent.Reward_cache[tuple_key] = top1_acc
-            else:
-                Q_value_dict[cur_step][model_id] = prune_agent.Reward_cache[tuple_key]
+            top1_acc, _, _ = eval_network(target_net=generated_net, target_eval_loader=test_loader, loss_function=loss_function)
+            Q_value_dict[cur_step][model_id] = top1_acc
+        
             sample_trajectory(cur_step=cur_step + 1, 
                               original_net_with_info=generated_net_with_info, 
                               prune_agent=prune_agent, 
-                              Q_value_dict=Q_value_dict, 
-                              prev_prune_counter_sum=cur_prune_counter_sum)
+                              Q_value_dict=Q_value_dict)
 
             if cur_step + 1 in Q_value_dict:
                 Q_value_dict[cur_step][model_id] += settings.RL_DISCOUNT_FACTOR * torch.max(Q_value_dict[cur_step + 1])
@@ -374,8 +362,10 @@ if __name__ == '__main__':
     sample_input.requires_grad = True # used to extract dependence
 
     # extract layer info
+    logging.info(f'Start extracting layers dependency')
     prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(net)
-    next_layers = extract_prunable_layer_dependence(model=net, x=sample_input, prunable_layers=prunable_layers)
+    next_layers, layer_cluster_mask = extract_prunable_layer_dependence(model=net, x=sample_input, prunable_layers=prunable_layers)
+    prune_distribution = adjust_prune_distribution_for_cluster(prune_distribution, layer_cluster_mask)
     
     if args.resume:
         # resume complexity of model
@@ -408,6 +398,7 @@ if __name__ == '__main__':
         # initialize prune agent
         ReplayBuffer = torch.zeros([settings.RL_MAX_GENERATE_NUM, 1 + len(prune_distribution)]) # [:, 0] stores Q(s, a), [:, 1:] stores action a
         prune_agent = Prune_agent(prune_distribution=prune_distribution,
+                                  layer_cluster_mask=layer_cluster_mask,
                                   ReplayBuffer=ReplayBuffer, 
                                   filter_num=filter_num, 
                                   cur_top1_acc=cur_top1_acc)

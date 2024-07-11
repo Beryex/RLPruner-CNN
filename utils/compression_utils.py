@@ -4,10 +4,14 @@ import math
 import torch.nn as nn
 
 from conf import settings
+from utils import adjust_prune_distribution_for_cluster
+
+PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d, nn.Linear)
 
 class Prune_agent():
     def __init__(self,
                  prune_distribution: Tensor,
+                 layer_cluster_mask: list,
                  ReplayBuffer: Tensor, 
                  filter_num: int,
                  cur_top1_acc: float,
@@ -17,11 +21,11 @@ class Prune_agent():
         self.modification_max_num = int(filter_num * prune_filter_max_ratio)
         self.modification_min_num = int(filter_num * prune_filter_min_ratio)
         self.prune_distribution = prune_distribution
+        self.layer_cluster_mask = layer_cluster_mask
         self.noise_var = noise_var
         self.modification_num = self.modification_max_num
         self.T_max = settings.C_COS_PRUNE_EPOCH
         self.ReplayBuffer = ReplayBuffer
-        self.Reward_cache = {}
         self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
         self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
         self.lr_epoch = settings.RL_LR_EPOCH
@@ -33,9 +37,8 @@ class Prune_agent():
              epoch: int,
              cur_top1_acc: float):
         if optimal_net_index == 1:
-            # means generated net is better, reset counter then clear the ReplayBuffer, Reward_cache and net_list
+            # means generated net is better, reset counter then clear the ReplayBuffer and net_list
             self.ReplayBuffer.zero_()
-            self.Reward_cache = {}
             self.net_list = [None] * settings.RL_MAX_GENERATE_NUM
             self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
             self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
@@ -55,12 +58,14 @@ class Prune_agent():
         updated_prune_distribution = original_prune_distribution + step_length * (optimal_distribution - original_prune_distribution) 
         updated_prune_distribution = torch.clamp(updated_prune_distribution, min=probability_lower_bound)
         updated_prune_distribution /= torch.sum(updated_prune_distribution)
+        updated_prune_distribution = adjust_prune_distribution_for_cluster(updated_prune_distribution, self.layer_cluster_mask)
         
         if ppo_enable == True:
             ratio = updated_prune_distribution / original_prune_distribution
             updated_prune_distribution = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip) * original_prune_distribution
             updated_prune_distribution = torch.clamp(updated_prune_distribution, min=probability_lower_bound)
             updated_prune_distribution /= torch.sum(updated_prune_distribution)
+            updated_prune_distribution = adjust_prune_distribution_for_cluster(updated_prune_distribution, self.layer_cluster_mask)
         self.prune_distribution = updated_prune_distribution
         return updated_prune_distribution - original_prune_distribution
 
@@ -73,22 +78,25 @@ class Prune_agent():
         noised_distribution = self.prune_distribution + noise
         noised_distribution = torch.clamp(noised_distribution, min=probability_lower_bound)
         noised_distribution = noised_distribution / torch.sum(noised_distribution)
-        prune_counter = torch.round(noised_distribution * self.modification_num)
+        noised_distribution = adjust_prune_distribution_for_cluster(noised_distribution, self.layer_cluster_mask)
+        prune_counter = torch.round(noised_distribution * self.modification_num).int().tolist()
+        decred_layer = {}
 
         for target_layer_idx, count in enumerate(prune_counter):
             target_layer = prunable_layers[target_layer_idx]
-            for _ in range(int(count.item())):
-                if isinstance(target_layer, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d)):
-                    self.prune_filter_conv(target_layer_idx, target_layer, next_layers)
+            for _ in range(count):
+                if isinstance(target_layer, PRUNABLE_LAYERS):
+                    self.prune_conv_filter(target_layer_idx, target_layer, next_layers, decred_layer)
                 elif isinstance(target_layer, (nn.Linear)):
-                    self.prune_filter_linear(target_layer_idx, target_layer, next_layers)
+                    self.prune_linear_filter(target_layer_idx, target_layer, next_layers, decred_layer)
         
-        return noised_distribution, prune_counter
+        return noised_distribution
 
-    def prune_filter_conv(self,
+    def prune_conv_filter(self,
                           target_layer_idx: int,
                           target_layer: nn.Module, 
-                          next_layers: list):
+                          next_layers: list,
+                          decred_layer: dict):
         # prune kernel
         if target_layer.out_channels - 1 == 0:
             return
@@ -106,7 +114,13 @@ class Prune_agent():
         # update following layers
         for next_layer_info in next_layers[target_layer_idx]:
             next_layer = next_layer_info[0]
-            offset = next_layer_info[1]
+            if next_layer_info[1] == -1:
+                if next_layer not in decred_layer:
+                    # means this layer involved in residual connection and can only be decreased input once
+                    decred_layer[next_layer] = target_layer
+                elif decred_layer[next_layer] != target_layer:
+                    continue
+            offset = max(next_layer_info[1], 0)
             if isinstance(next_layer, nn.BatchNorm2d):
                 # case 1: BatchNorm
                 target_bn = next_layer
@@ -117,6 +131,7 @@ class Prune_agent():
                     target_bn.running_mean = target_bn.running_mean[kept_indices]
                     target_bn.running_var = target_bn.running_var[kept_indices]
                 target_bn.num_features -= 1
+                decrease_offset(next_layers, next_layer, offset, 1)
                 if target_bn.num_features != target_bn.weight.shape[0]:
                     raise ValueError(f'BatchNorm layer number_features {target_bn.num_features} and weight dimension {target_bn.weight.shape[0]} mismath')
             elif isinstance(next_layer, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d)):
@@ -125,26 +140,39 @@ class Prune_agent():
                     kept_indices = [i for i in range(next_layer.in_channels) if i != target_kernel + offset]
                     next_layer.weight.data = next_layer.weight.data[:, kept_indices, :, :]
                 next_layer.in_channels -= 1
+                decrease_offset(next_layers, next_layer, offset, 1)
                 if next_layer.in_channels != next_layer.weight.shape[1]:
+                    print(next_layer.in_channels)
+                    print(target_kernel)
+                    print(offset)
+                    print(target_layer)
+                    print(next_layer)
                     raise ValueError(f'Conv2d layer in_channels {next_layer.in_channels} and weight dimension {next_layer.weight.shape[1]} mismath')
             elif isinstance(next_layer, (nn.Linear)):
                 # case 3: Linear
                 output_area = 1 # default for most CNNs
-                new_in_features = target_layer.out_channels * output_area ** 2
                 start_index = (target_kernel + offset) * output_area ** 2
                 end_index = start_index + output_area ** 2
                 with torch.no_grad():
                     next_layer.weight.data = torch.cat([next_layer.weight.data[:, :start_index], next_layer.weight.data[:, end_index:]], dim=1)
                     if next_layer.bias is not None:
                         next_layer.bias.data = next_layer.bias.data
-                next_layer.in_features = new_in_features
+                next_layer.in_features -= output_area ** 2
+                decrease_offset(next_layers, next_layer, offset, output_area ** 2)
                 if next_layer.in_features != next_layer.weight.shape[1]:
+                    print("CONV")
+                    print(next_layer.in_features)
+                    print(target_kernel)
+                    print(offset)
+                    print(target_layer)
+                    print(next_layer)
                     raise ValueError(f'Linear layer in_channels {next_layer.in_features} and weight dimension {next_layer.weight.shape[1]} mismath')
 
-    def prune_filter_linear(self, 
+    def prune_linear_filter(self, 
                             target_layer_idx: int,
                             target_layer: nn.Linear,
-                            next_layers: list):
+                            next_layers: list, 
+                            decred_layer: dict):
         if target_layer.out_features - 1 == 0:
             return
         weight_variances = torch.var(target_layer.weight.data, dim = 1)
@@ -158,18 +186,38 @@ class Prune_agent():
         if target_layer.out_features != target_layer.weight.shape[0]:
             raise ValueError(f'Linear layer out_channels {target_layer.out_features} and weight dimension {target_layer.weight.shape[0]} mismath')
         
+        # update following layers
         for next_layer_info in next_layers[target_layer_idx]:
             next_layer = next_layer_info[0]
-            offset = next_layer_info[1]
+            if next_layer_info[1] == -1:
+                if next_layer not in decred_layer:
+                    # means this layer involved in residual connection and can only be decreased input once
+                    decred_layer[next_layer] = target_layer
+                elif decred_layer[next_layer] != target_layer:
+                    continue
+            offset = max(next_layer_info[1], 0)
             if isinstance(next_layer, (nn.Linear)):
                 # case 1: Linear
-                new_in_features = target_layer.out_features
                 start_index = target_neuron + offset
                 end_index = start_index + 1
                 with torch.no_grad():
                     next_layer.weight.data = torch.cat([next_layer.weight.data[:, :start_index], next_layer.weight.data[:, end_index:]], dim=1)
                     if next_layer.bias is not None:
                         next_layer.bias.data = next_layer.bias.data
-                next_layer.in_features = new_in_features
+                next_layer.in_features -= 1
+                decrease_offset(next_layers, next_layer, offset, 1)
                 if next_layer.in_features != next_layer.weight.shape[1]:
+                    print(next_layer.in_features)
+                    print(target_neuron)
+                    print(offset)
+                    print(target_layer)
+                    print(next_layer)
                     raise ValueError(f'Linear layer in_channels {next_layer.in_features} and weight dimension {next_layer.weight.shape[1]} mismath')
+
+def decrease_offset(next_layers, target_layer, target_offset, decrement):
+    for ith_next_layers in next_layers:
+        for next_layer_info in ith_next_layers:
+            next_layer = next_layer_info[0]
+            offset = next_layer_info[1]
+            if id(target_layer) == id(next_layer) and offset > target_offset:
+                next_layer_info[1] -= decrement
