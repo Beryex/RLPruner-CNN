@@ -1,5 +1,6 @@
 import torch
 from torch import nn, Tensor
+from typing import Tuple, List
 import queue
 
 
@@ -36,7 +37,7 @@ def get_model(model_name: str, in_channels: int, num_class: int) -> nn.Module:
         return None
 
 
-def extract_prunable_layers_info(model: nn.Module) -> tuple[Tensor, int, list]:
+def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
     """ Extracts prunable layer information from a given neural network model """
     prunable_layers = []
     output_dims = []
@@ -68,7 +69,7 @@ def extract_prunable_layers_info(model: nn.Module) -> tuple[Tensor, int, list]:
 
 def extract_prunable_layer_dependence(model: nn.Module, 
                                       x: Tensor,
-                                      prunable_layers: list) -> tuple[list, list]:
+                                      prunable_layers: List) -> Tuple[List, List]:
     """ Extract interdependence of prunable layers for end-to-end pruning """
     handles = []
     all_layers = []
@@ -87,7 +88,7 @@ def extract_prunable_layer_dependence(model: nn.Module,
     
     recursive_collect_all_layers(model, None)
 
-    def forward_hook(layer: nn.Module, input: tuple, output: Tensor) -> None:
+    def forward_hook(layer: nn.Module, input: Tuple, output: Tensor) -> None:
         """ Link each layer's I/O tensor to itself """
         input = input[0]
         # ignore activation layer that operates tensor in_place and not change tensor id
@@ -290,7 +291,7 @@ def check_tensor_residual(input_tensor: Tensor,
     return False
 
 def adjust_prune_distribution_for_cluster(prune_distribution: Tensor, 
-                                          layer_cluster_mask: list) -> Tensor:
+                                          layer_cluster_mask: List) -> Tensor:
     """ Adjust so that layer among non-zero cluster has equal probability to be pruned """
     cluster_total_value = {}
     cluster_layer_number = {}

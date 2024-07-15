@@ -9,6 +9,7 @@ import copy
 from thop import profile
 import random
 import numpy as np
+from typing import Tuple, List
 import wandb
 import logging
 
@@ -262,9 +263,9 @@ def evaluate(model: nn.Module):
     return top1_acc, top5_acc, eval_loss
 
 
-def generate_architecture(original_model_with_info: tuple,
+def generate_architecture(original_model_with_info: Tuple,
                           prune_agent: Prune_agent,
-                          epoch: int) -> tuple[nn.Module, list, list]:
+                          epoch: int) -> Tuple[nn.Module, List, List]:
     """ Generate architecture using RL """
     tolerance_time = prune_agent.lr_tolerance_time
     for _ in range(1, prune_agent.lr_epoch + 1):
@@ -306,7 +307,7 @@ def generate_architecture(original_model_with_info: tuple,
     return best_generated_model_with_info
 
 def sample_trajectory(cur_step: int, 
-                      original_model_with_info: tuple,
+                      original_model_with_info: Tuple,
                       prune_agent: Prune_agent, 
                       Q_value_dict: dict) -> None:
     """ Sample trajectory using DFS """
@@ -380,8 +381,8 @@ def fine_tuning_with_KD(teacher_model: nn.Module,
     return train_loss
 
 
-def evaluate_best_generated_model(original_model_with_info: tuple, 
-                                  best_generated_model_with_info: tuple,
+def evaluate_best_generated_model(original_model_with_info: Tuple, 
+                                  best_generated_model_with_info: Tuple,
                                   prune_agent: Prune_agent,
                                   epoch: int):
     """ compare the generated model with original one """

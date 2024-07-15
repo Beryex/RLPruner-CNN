@@ -1,6 +1,8 @@
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
+from typing import Tuple
+
 from conf import settings
 
 
@@ -9,7 +11,7 @@ def get_dataloader(dataset_name: str,
                    num_workers: int,
                    val_proportion: float = 0,
                    pin_memory: bool = True,
-                   shuffle: bool =True) -> tuple[DataLoader, DataLoader, DataLoader, int, int]:
+                   shuffle: bool =True) -> Tuple[DataLoader, DataLoader, DataLoader, int, int]:
     """ Load and split dataset, also return dataset info for model building """
     if dataset_name == 'mnist':
         in_channels = 1

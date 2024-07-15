@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import wandb
 import logging
+from typing import Tuple
 
 from conf import settings
 from utils import get_model, get_dataloader, setup_logging, torch_set_random_seed
@@ -89,7 +90,7 @@ def train(model: nn.Module,
 def evaluate(model: nn.Module,
              eval_loader: DataLoader, 
              loss_function: nn.Module, 
-             device: str) -> tuple[float, float, float]:
+             device: str) -> Tuple[float, float, float]:
     """ Evaluate model """
     model.eval()
     correct_1 = 0.0

@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor
+from typing import List
 import math
 import torch.nn as nn
 
@@ -11,7 +12,7 @@ class Prune_agent():
     """ Agent used to prune architecture and maintain prune_distribution """
     def __init__(self,
                  prune_distribution: Tensor,
-                 layer_cluster_mask: list,
+                 layer_cluster_mask: List,
                  ReplayBuffer: Tensor, 
                  filter_num: int,
                  cur_top1_acc: float,
@@ -83,8 +84,8 @@ class Prune_agent():
 
 
     def prune_architecture(self,
-                            prunable_layers: list,
-                            next_layers: list) -> Tensor:
+                            prunable_layers: List,
+                            next_layers: List) -> Tensor:
         """ Generate new noised PD and prune architecture based on noised PD """
         P_lower_bound = settings.RL_PROBABILITY_LOWER_BOUND
         prune_counter = torch.zeros(len(self.prune_distribution))
@@ -109,7 +110,7 @@ class Prune_agent():
 
 def prune_conv_filter(target_layer_idx: int,
                         target_layer: nn.Module, 
-                        next_layers: list,
+                        next_layers: List,
                         decred_layer: dict) -> None:
     """ Prune one conv filter and decrease next layers' input dim """
     if target_layer.out_channels - 1 == 0:
@@ -187,7 +188,7 @@ def prune_conv_filter(target_layer_idx: int,
 
 def prune_linear_filter(target_layer_idx: int,
                         target_layer: nn.Linear,
-                        next_layers: list, 
+                        next_layers: List, 
                         decred_layer: dict) -> None:
     """ Prune one linear filter and decrease next layers' input dim """
     if target_layer.out_features - 1 == 0:
@@ -234,7 +235,7 @@ def prune_linear_filter(target_layer_idx: int,
                                  f'weight dimension {next_layer.weight.shape[1]} mismatch')
 
 
-def decrease_offset(next_layers: list, 
+def decrease_offset(next_layers: List, 
                     target_layer: nn.Module, 
                     target_offset: int, 
                     decrement: int) -> None:
