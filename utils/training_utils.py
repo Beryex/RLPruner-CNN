@@ -3,18 +3,13 @@ from conf import settings
 import os
 import random
 import numpy as np
-try:
-    import wandb
-    wandb_available = True
-except ImportError:
-    wandb_available = False
+import wandb
 import logging
 from torch import Tensor
-import torch.optim as optim
-from torch.optim.lr_scheduler import _LRScheduler
 
 
-def torch_set_random_seed(seed: int):
+def torch_set_random_seed(seed: int) -> None:
+    """ Set random seed for reproducible usage """
     os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -24,7 +19,9 @@ def torch_set_random_seed(seed: int):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-def torch_resume_random_seed(prev_checkpoint: dict):
+
+def torch_resume_random_seed(prev_checkpoint: dict) -> None:
+    """ Resume random seed for reproducible usage """
     os.environ['PYTHONHASHSEED'] = prev_checkpoint['python_hash_seed']
     random.setstate(prev_checkpoint['random_state'])
     np.random.set_state(prev_checkpoint['np_random_state'])
@@ -34,51 +31,37 @@ def torch_resume_random_seed(prev_checkpoint: dict):
     torch.backends.cudnn.deterministic = True
 
 
-def setup_logging(experiment_id: int, 
-                  net: str, 
-                  dataset: str, 
-                  action: str):
-    # create relevant folders
+def setup_logging(experiment_id: int, model_name: str, dataset_name: str, action: str) -> None:
+    """ Set up wandb, logging """
     if not os.path.exists("checkpoint"):
         os.makedirs("checkpoint")
     if not os.path.isdir("models"):
         os.mkdir("models")
     
-    # initialize wandb
-    if wandb_available:
-        hyperparams_config = {
-            "net": net,
-            "dataset": dataset,
-            "action": action, 
-            "random_seed": experiment_id
-        }
-        hyperparams_config.update(settings.__dict__)
-        wandb.init(
-            project="AdaptivePruningForCNN",
-            name=f"{action}_{net}_on_{dataset}_{experiment_id}",
-            id=str(experiment_id),
-            config=hyperparams_config,
-            resume=True,
-            mode="disabled"
-        )
+    hyperparams_config = {
+        "model": model_name,
+        "dataset": dataset_name,
+        "action": action, 
+        "random_seed": experiment_id
+    }
+    hyperparams_config.update(settings.__dict__)
+    wandb.init(
+        project="AdaptivePruningForCNN",
+        name=f"{action}_{model_name}_on_{dataset_name}_{experiment_id}",
+        id=str(experiment_id),
+        config=hyperparams_config,
+        resume=True,
+        mode="disabled"
+    )
 
-    # initialize logging
-    log_directory = "experiment_log"
-    if not os.path.isdir(log_directory):
-        os.mkdir(log_directory)
+    log_dir = "log"
+    if not os.path.isdir(log_dir):
+        os.mkdir(log_dir)
     
-    if action == 'train':
-        log_filename = f"{log_directory}/experiment_log_train_{net}_on_{dataset}_random_seed_{experiment_id}.txt"
-    elif action == 'compress':
-        log_filename = f"{log_directory}/experiment_log_compress_{net}_on_{dataset}_random_seed_{experiment_id}.txt"
-    else:
-        log_filename = f"{log_directory}/experiment_log_test_{net}_on_{dataset}_random_seed_{experiment_id}.txt"
+    log_filename = f"{log_dir}/log_{action}_{model_name}_{dataset_name}_{experiment_id}.txt"
     logging.basicConfig(level=logging.INFO,
                         format='%(levelname)s - %(message)s',
-                        handlers=[
-                            logging.FileHandler(log_filename),
-                            logging.StreamHandler()
-                        ])
+                        handlers=[logging.FileHandler(log_filename)])
 
 def dice_coeff(input: Tensor, 
                target: Tensor, 
@@ -110,23 +93,3 @@ def dice_loss(input: Tensor,
     # Dice loss (objective to minimize) between 0 and 1
     fn = multiclass_dice_coeff if multiclass else dice_coeff
     return 1 - fn(input, target, reduce_batch_first=True)
-
-class WarmUpLR(_LRScheduler):
-    """warmup_training learning rate scheduler
-    Args:
-        optimizer: optimzier(e.g. SGD)
-        total_iters: totoal_iters of warmup phase
-    """
-    def __init__(self, 
-                 optimizer: optim.Optimizer, 
-                 total_iters: int, 
-                 last_epoch:int = -1):
-
-        self.total_iters = total_iters
-        super().__init__(optimizer, last_epoch)
-
-    def get_lr(self):
-        """we will use the first m batches, and set the learning
-        rate to base_lr * m / total_iters
-        """
-        return [base_lr * self.last_epoch / (self.total_iters + 1e-8) for base_lr in self.base_lrs]

@@ -1,3 +1,13 @@
+"""
+Implementation of the ResNet model, inspired by the architecture proposed in:
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun, "Deep Residual Learning for Image Recognition."
+Paper: https://arxiv.org/abs/1512.03385v1
+
+This implementation is based on the PyTorch replication available at:
+https://github.com/weiaicunzai/pytorch-cifar100/
+"""
+
+
 import torch
 import torch.nn as nn
 

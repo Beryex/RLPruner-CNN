@@ -1,110 +1,114 @@
 import torch
 import torch.nn as nn
-import argparse
-from thop import profile
-from models.vgg import Custom_Conv2d, Custom_Linear
-from tqdm import tqdm
-import matplotlib.pyplot as plt
+import torch.optim as optim
+import numpy as np
+import time
+import wandb
+import logging
 
-from utils import get_dataloader, count_custom_conv2d, count_custom_linear
+from conf import settings
+from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, 
+                   adjust_prune_distribution_for_cluster, get_dataloader, setup_logging, 
+                   Prune_agent, torch_set_random_seed, torch_resume_random_seed)
 
 
-def get_tensor_memory(tensor):
-    if tensor is None:
-        return 0
-    return tensor.element_size() * tensor.nelement()
+train_loader, valid_loader, test_loader, _, _ = get_dataloader('cifar100', 
+                                                                batch_size=256, 
+                                                                num_workers=8)
+eval_loader = test_loader
+device = 'cuda'
+loss_function = nn.CrossEntropyLoss()
 
-def test_network(target_net: nn.Module):
+
+@torch.no_grad()
+def evaluate(model: nn.Module):
+    """ Evaluate model on eval_loader """
+    model.eval()
     correct_1 = 0.0
     correct_5 = 0.0
-    loss = 0.0
-    target_net.eval()
-    with torch.no_grad():
-        for (images, labels) in tqdm(test_loader, total=len(test_loader), desc='Testing round', unit='batch', leave=False):
-            images = images.to(device)
-            labels = labels.to(device)
-            
-            outputs = target_net(images)
-            loss += loss_function(outputs, labels).item()
-            _, preds = outputs.topk(5, 1, largest=True, sorted=True)
-            correct_1 += (preds[:, :1] == labels.unsqueeze(1)).sum().item()
-            top5_correct = labels.view(-1, 1).expand_as(preds) == preds
-            correct_5 += top5_correct.any(dim=1).sum().item()
+    eval_loss = 0.0
+    for images, labels in eval_loader:
+        images = images.to(device)
+        labels = labels.to(device)
+        
+        outputs = model(images)
+        eval_loss += loss_function(outputs, labels).item()
+        _, preds = outputs.topk(5, 1, largest=True, sorted=True)
+        correct_1 += (preds[:, :1] == labels.unsqueeze(1)).sum().item()
+        top5_correct = labels.view(-1, 1).expand_as(preds) == preds
+        correct_5 += top5_correct.any(dim=1).sum().item()
     
-    top1_acc = correct_1 / len(test_loader.dataset)
-    top5_acc = correct_5 / len(test_loader.dataset)
-    loss /= len(test_loader)
-    FLOPs_num, para_num = profile(target_net, inputs = (input, ), verbose=False, custom_ops = custom_ops)
-    return top1_acc, top5_acc, loss, FLOPs_num, para_num
-
-def test_compression_result(original_net: nn.Module, 
-                            compressed_net: nn.Module):
-    top1_acc, top5_acc, loss, original_FLOPs_num, original_para_num = test_network(original_net)
-    print(f'Original model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
-    print(f'Original model has FLOPs: {original_FLOPs_num}, Parameter Num: {original_para_num}')
-
-    top1_acc, top5_acc, loss, compressed_FLOPs_num, compressed_para_num = test_network(compressed_net)
-    print(f'Compressed model has loss: {loss}, top1 accuracy: {top1_acc}, top5 accuracy: {top5_acc}')
-    print(f'Compressed model has FLOPs: {compressed_FLOPs_num}, Parameter Num: {compressed_para_num}')
-
-    FLOPs_compression_ratio = 1 - compressed_FLOPs_num / original_FLOPs_num
-    Para_compression_ratio = 1 - compressed_para_num / original_para_num
-    print(f'FLOPS compressed ratio: {FLOPs_compression_ratio}, Parameter Num compressed ratio: {Para_compression_ratio}')
-    print(f'Original net: {original_net}')
-    print(f'Compressed net: {compressed_net}')
-
-def show_loss(train_loss: list, 
-              test_loss: list, 
-              top1_acc : list):
-    epoch_list = list(range(len(train_loss)))
-    plt.figure()
-
-    plt.plot(epoch_list, train_loss, label='train_loss')
-    plt.plot(epoch_list, test_loss, label='test_loss')
-    plt.plot(epoch_list, top1_acc, label='top1_acc')
-
-    plt.title('Train statics')
-    plt.xlabel('Epoch')
-    plt.ylabel('Statics')
-    plt.legend()
-    plt.show()
-    
-
-def get_args():
-    parser = argparse.ArgumentParser(description='train given model under given dataset')
-    parser.add_argument('-net', type=str, default=None, help='the type of model to train')
-    parser.add_argument('-dataset', type=str, default=None, help='the dataset to train on')
-
-    args = parser.parse_args()
-    check_args(args)
-
-    return args
-
-def check_args(args: argparse.Namespace):
-    if args.net is None:
-        raise TypeError(f"the specific type of model should be provided, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-    elif args.net not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
-        raise TypeError(f"the specific model {args.net} is not supported, please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-    if args.dataset is None:
-        raise TypeError(f"the specific type of dataset to train on should be provided, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
-    elif args.dataset not in ['mnist', 'cifar10', 'cifar100', 'imagenet']:
-        raise TypeError(f"the specific dataset {args.dataset} is not supported, please select one of 'mnist', 'cifar10', 'cifar100', 'imagenet'")
+    top1_acc = correct_1 / len(eval_loader.dataset)
+    top5_acc = correct_5 / len(eval_loader.dataset)
+    eval_loss /= len(eval_loader)
+    return top1_acc, top5_acc, eval_loss
 
 
-if __name__ == '__main__':
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    loss_function = nn.CrossEntropyLoss()
-    args = get_args()
+def fine_tuning_with_KD(teacher_model: nn.Module,
+                        student_model: nn.Module,
+                        optimizer: optim.Optimizer, 
+                        T: float = 2,
+                        soft_loss_weight: float = 0.25, 
+                        stu_loss_weight: float = 0.75) -> float:
+    """ fine tuning generated model with knowledge distillation with original model as teach """
+    teacher_model.eval()
+    student_model.train()
+    train_loss = 0.0
+    for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
+        
+        optimizer.zero_grad()
+        stu_outputs = student_model(images)
+        stu_loss = loss_function(stu_outputs, labels)
 
-    # process input argument
-    _, _, test_loader, _, _ = get_dataloader(dataset=args.dataset)
-    original_net = torch.load('models/vgg16_cifar100_Original_1717669735.pth').to(device)
-    compressed_net = torch.load('models/vgg16_cifar100_1717990275_finished.pth').to(device)
-    
-    if args.net == 'lenet5':
-        input = torch.rand(1, 1, 32, 32).to(device)
-    else:
-        input = torch.rand(1, 3, 32, 32).to(device)
-    custom_ops = {Custom_Conv2d: count_custom_conv2d, Custom_Linear: count_custom_linear}
-    
-    test_compression_result(original_net=original_net, compressed_net=compressed_net)
+        with torch.no_grad():
+            tch_outputs = teacher_model(images)
+        # soften the student output by applying softmax firstly and log() 
+        # secondly to avoid overflow and improve efficiency, and teacher output softmax only
+        stu_outputs_softened = nn.functional.log_softmax(stu_outputs / T, dim=-1)
+        tch_outputs_softened = nn.functional.softmax(tch_outputs / T, dim=-1)
+        soft_loss = (torch.sum(tch_outputs_softened * (tch_outputs_softened.log() - stu_outputs_softened)) 
+                     / stu_outputs_softened.shape[0] * T ** 2)
+
+        loss = soft_loss_weight * soft_loss + stu_loss_weight * stu_loss
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item()
+    train_loss /= len(train_loader)
+    return train_loss
+
+teacher_model = torch.load("models/")
+generated_model = torch.load("models/")
+
+setup_logging(experiment_id=int(time.time()), 
+            model_name='vgg16', 
+            dataset_name='cifar100', 
+            action='test')
+
+for epoch_total in range(6, 50):
+    for initial_lr in np.arange(1e-2, 5e-5 - 0.1, -0.1):
+        for min_lr in np.arange(5e-5, 1e-7 - 0.1, -0.1):
+            for teacher_co in np.arange(0.1, 1, 0.05):
+                optimizer = optim.SGD(generated_model.parameters(), 
+                                        lr=initial_lr, momentum=0.9, 
+                                        weight_decay=5e-4)
+                lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
+                                                                    epoch_total - 5, 
+                                                                    eta_min=min_lr,
+                                                                    last_epoch=-1)
+                best_acc = -1
+                best_trained_generated_model_with_info = None
+                for dev_epoch in range(1, epoch_total + 1):
+                    train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
+                                                    student_model=generated_model, 
+                                                    optimizer=optimizer,
+                                                    soft_loss_weight=teacher_co,
+                                                    stu_loss_weight=1 - teacher_co)
+                    top1_acc, top5_acc, _ = evaluate(generated_model)
+                    lr_scheduler.step()
+
+                    if best_acc < top1_acc:
+                        best_acc = top1_acc
+                print(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, teach_co: {teacher_co}')
+                logging.info(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, teach_co: {teacher_co}')
+                wandb.log({"best acc": best_acc, "epoch_total": epoch_total, "initial_lr": initial_lr, "min_lr": min_lr, "teach_co": teacher_co})
