@@ -25,7 +25,6 @@ def main():
     global train_loader
     global eval_loader
     global loss_function
-    global initial_protect_used
     global cur_top1_acc
     args = get_args()
     device = args.device
@@ -80,7 +79,7 @@ def main():
         sample_input = torch.rand(1, 1, 32, 32).to(device)
     else:
         sample_input = torch.rand(1, 3, 32, 32).to(device)
-    sample_input.requires_grad = True # used to extract dependence
+    sample_input.requires_grad = True # used to extract layer interdependence
 
     logging.info(f'Start extracting layers dependency')
     prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(model)
@@ -99,7 +98,6 @@ def main():
         Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
         FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
 
-        initial_protect_used = prev_checkpoint['initial_protect_used']
         initial_top1_acc = prev_checkpoint['initial_top1_acc']
         cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
@@ -109,7 +107,6 @@ def main():
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
 
-        initial_protect_used = True
         initial_top1_acc, _, _ = evaluate(model)
         cur_top1_acc = initial_top1_acc
 
@@ -227,7 +224,6 @@ def main():
                 'original_FLOPs_num': original_FLOPs_num,
                 'Para_compression_ratio': Para_compression_ratio,
                 'FLOPs_compression_ratio': FLOPs_compression_ratio,
-                'initial_protect_used': initial_protect_used,
                 'initial_top1_acc': initial_top1_acc,
                 'cur_top1_acc': cur_top1_acc,
 
