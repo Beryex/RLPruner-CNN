@@ -14,45 +14,25 @@ class Prune_agent():
                  prune_distribution: Tensor,
                  layer_cluster_mask: List,
                  ReplayBuffer: Tensor, 
+                 sample_num: int,
                  filter_num: int,
-                 cur_top1_acc: float,
-                 prune_filter_max_ratio: float = settings.C_PRUNE_FILTER_MAX_RATIO,
-                 prune_filter_min_ratio: float = settings.C_PRUNE_FILTER_MIN_RATIO,
-                 noise_var: float = settings.RL_PRUNE_FILTER_NOISE_VAR):
+                 prune_filter_ratio: float,
+                 noise_var: float):
         # Static Data: These attributes do not change after initialization
-        self.modification_max_num = int(filter_num * prune_filter_max_ratio)
-        self.modification_min_num = int(filter_num * prune_filter_min_ratio)
+        self.sample_num = sample_num
+        self.modification_num = int(filter_num * prune_filter_ratio)
         self.layer_cluster_mask = layer_cluster_mask
         self.noise_var = noise_var
-        self.lr_epoch = settings.RL_LR_EPOCH
-        self.lr_tolerance_time = settings.RL_LR_TOLERANCE
-        self.lr_change_threshold = settings.RL_REWARD_CHANGE_THRESHOLD
-        self.T_max = settings.C_COS_PRUNE_EPOCH
-        self.cur_single_step_acc_threshold = settings.C_ACC_CHANGE_THRESHOLD
         
         # Dynamic Data: These attributes may change during the object's lifetime
-        self.modification_num = self.modification_max_num
         self.prune_distribution = prune_distribution
         self.ReplayBuffer = ReplayBuffer
-        self.model_info_list = [None] * settings.RL_MAX_SAMPLE_NUM
-        self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
-                                cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT ** 2 * settings.RL_DISCOUNT_FACTOR)
+        self.model_info_list = [None] * sample_num
 
-
-    def step(self, optimal_model_index: int, epoch: int, cur_top1_acc: float) -> None:
-        """ clear the ReplayBuffer and model_info_list if generated model is better, then decrease modification num """
-        if optimal_model_index == 1:
-            # means generated model is better, reset counter then clear the ReplayBuffer and model_info_list
-            self.ReplayBuffer.zero_()
-            self.model_info_list = [None] * settings.RL_MAX_SAMPLE_NUM
-            self.cur_single_step_acc_threshold = settings.C_ACC_CHANGE_THRESHOLD_INCRE
-            self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
-                                    cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT ** 2 * settings.RL_DISCOUNT_FACTOR)
-        else:
-            self.cur_single_step_acc_threshold += settings.C_ACC_CHANGE_THRESHOLD_INCRE
-        if epoch < self.T_max:
-            self.modification_num = int(self.modification_min_num + 
-                                        (self.modification_max_num - self.modification_min_num) * 0.5 * (math.cos(math.pi * epoch / self.T_max) + 1))
+    def step(self) -> None:
+        """ clear the ReplayBuffer and model_info_list if generated model is better """
+        self.ReplayBuffer.zero_()
+        self.model_info_list = [None] * self.sample_num
 
 
     def update_prune_distribution(self, 
