@@ -25,7 +25,6 @@ def main():
     global train_loader
     global eval_loader
     global loss_function
-    global cur_top1_acc
     args = get_args()
     device = args.device
 
@@ -97,9 +96,6 @@ def main():
         original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
         Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
         FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
-
-        initial_top1_acc = prev_checkpoint['initial_top1_acc']
-        cur_top1_acc = prev_checkpoint['cur_top1_acc']
     else:
         original_FLOPs_num, original_para_num = profile(model=model, 
                                                         inputs = (sample_input, ), 
@@ -108,7 +104,6 @@ def main():
         FLOPs_compression_ratio = 0.0
 
         initial_top1_acc, _, _ = evaluate(model)
-        cur_top1_acc = initial_top1_acc
 
     """ get prune agent """
     if args.resume:
@@ -125,7 +120,7 @@ def main():
                                   noise_var=args.noise_var)
         logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
 
-        wandb.log({"top1_acc": cur_top1_acc, 
+        wandb.log({"top1_acc": initial_top1_acc, 
                    "modification_num": prune_agent.modification_num, 
                    "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                    "Para_compression_ratio": Para_compression_ratio}, 
@@ -182,10 +177,10 @@ def main():
                         torch.save(generated_model, f"models/{experiment_id}_checkpoint.pth")
                         model_with_info = copy.deepcopy(generated_model_with_info)
                 
-                pbar2.set_postfix({'train_loss': train_loss,
-                                   'Best_acc': best_acc, 
-                                   'cur_acc': cur_top1_acc})
-                pbar2.update(1)
+                    pbar2.set_postfix({'train_loss': train_loss,
+                                    'Best_acc': best_acc, 
+                                    'cur_acc': top1_acc})
+                    pbar2.update(1)
 
             
             """ Compute compression results """
@@ -195,10 +190,10 @@ def main():
             FLOPs_compression_ratio = 1 - model_FLOPs / original_FLOPs_num
             Para_compression_ratio = 1 - model_Params / original_para_num
 
-            wandb.log({"top1_acc": cur_top1_acc, 
-                    "modification_num": prune_agent.modification_num, 
-                    "FLOPs_compression_ratio": FLOPs_compression_ratio, 
-                    "Para_compression_ratio": Para_compression_ratio}, 
+            wandb.log({"top1_acc": top1_acc, 
+                       "modification_num": prune_agent.modification_num, 
+                       "FLOPs_compression_ratio": FLOPs_compression_ratio, 
+                       "Para_compression_ratio": Para_compression_ratio}, 
                     step=epoch)
             for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
@@ -208,8 +203,7 @@ def main():
                          f'compression ratio: FLOPs: {FLOPs_compression_ratio}, '
                          f'Parameter number {Para_compression_ratio}')
             
-            prune_agent.step(epoch,
-                             cur_top1_acc)
+            prune_agent.step()
 
             # save checkpoint
             checkpoint = {
@@ -224,8 +218,6 @@ def main():
                 'original_FLOPs_num': original_FLOPs_num,
                 'Para_compression_ratio': Para_compression_ratio,
                 'FLOPs_compression_ratio': FLOPs_compression_ratio,
-                'initial_top1_acc': initial_top1_acc,
-                'cur_top1_acc': cur_top1_acc,
 
                 # random seed parameter
                 'random_seed': random_seed,
@@ -280,7 +272,7 @@ def generate_architecture(original_model_with_info: Tuple,
                             original_model_with_info,
                             prune_agent,
                             Q_value_dict)
-            cur_Q_value = torch.max(Q_value_dict[0])
+            cur_Q_value = torch.max(Q_value_dict[0]).item()
             logging.info(f'Generated model Q value List: {Q_value_dict[0]}')
             logging.info(f'Current new model Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
             logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
@@ -294,7 +286,6 @@ def generate_architecture(original_model_with_info: Tuple,
                                                                                   args.ppo)
                 logging.info(f"current prune probability distribution change: {prune_distribution_change}")
                 logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
-                tolerance_time = prune_agent.lr_tolerance_time
             pbar.set_postfix({'Best Q value': best_Q_value, 
                               'Q value': cur_Q_value})
             pbar.update(1)
@@ -416,12 +407,10 @@ def get_args():
                         help='initial fine tuning learning rate')
     parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--fine-tune_epoch', '-fte', type=int, default=settings.C_FT_EPOCH,
+    parser.add_argument('--fine-tune_epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
                         help='fine tuning epoch for generated model')
     parser.add_argument('--stu-co', '-sc', type=float, default=settings.T_FT_STU_CO,
                         help='the student loss coefficient in knowledge distillation')
-    parser.add_argument('--acc-change-threshold', '-act', type=int, default=settings.C_ACC_CHANGE_THRESHOLD,
-                        help='the acc change threshold to decide whether adopt generated model')
     parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
     parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
