@@ -45,7 +45,7 @@ class Prune_agent():
             # means generated model is better, reset counter then clear the ReplayBuffer and model_info_list
             self.ReplayBuffer.zero_()
             self.model_info_list = [None] * settings.RL_MAX_SAMPLE_NUM
-            self.cur_single_step_acc_threshold = settings.C_SINGLE_STEP_ACCURACY_CHANGE_THRESHOLD
+            self.cur_single_step_acc_threshold = settings.C_ACC_CHANGE_THRESHOLD_INCRE
             self.cur_Q_value_max = (cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT + 
                                     cur_top1_acc * settings.RL_CUR_ACC_TO_CUR_Q_VALUE_COEFFICIENT ** 2 * settings.RL_DISCOUNT_FACTOR)
         else:

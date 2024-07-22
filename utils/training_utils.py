@@ -50,8 +50,7 @@ def setup_logging(experiment_id: int, model_name: str, dataset_name: str, action
         name=f"{action}_{model_name}_on_{dataset_name}_{experiment_id}",
         id=str(experiment_id),
         config=hyperparams_config,
-        resume=True,
-        mode="disabled"
+        resume=True
     )
 
     log_dir = "log"

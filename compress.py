@@ -25,6 +25,8 @@ def main():
     global train_loader
     global eval_loader
     global loss_function
+    global initial_protect_used
+    global cur_top1_acc
     args = get_args()
     device = args.device
 
@@ -41,7 +43,7 @@ def main():
         setup_logging(experiment_id, model_name, dataset_name, action='compress')
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
 
-        model = torch.load(f'checkpoint/{experiment_id}_checkpoint.pth').to(device)
+        model = torch.load(f'models/{experiment_id}_checkpoint.pth').to(device)
         teacher_id = prev_checkpoint['teacher_id']
         teacher_model = torch.load(f'models/{model_name}_{dataset_name}_{teacher_id}_original.pth').to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
@@ -166,7 +168,9 @@ def main():
             for dev_epoch in range(1, args.fine_tune_epoch + 1):
                 train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
                                                  student_model=generated_model, 
-                                                 optimizer=optimizer)
+                                                 optimizer=optimizer,
+                                                 soft_loss_weight=1-args.stu_co,
+                                                 stu_loss_weight=args.stu_co)
                 top1_acc, top5_acc, _ = evaluate(generated_model)
                 logging.info(f"epoch: {dev_epoch}/{args.fine_tune_epoch}, "
                              f"train_Loss: {train_loss}, "
@@ -176,6 +180,7 @@ def main():
 
                 if best_acc < top1_acc:
                     best_acc = top1_acc
+                    torch.save(generated_model, f"models/{experiment_id}_checkpoint.pth")
                     best_trained_generated_model_with_info = copy.deepcopy(generated_model_with_info)
             
             """ Compare best trained generated model with original one """
@@ -183,6 +188,7 @@ def main():
                                                                                      best_trained_generated_model_with_info,
                                                                                      prune_agent,
                                                                                      epoch)
+            model_with_info = optimal_model_with_info
             optimal_model = optimal_model_with_info[0]
             optimal_model_FLOPs, optimal_model_Params = profile(model=optimal_model, 
                                                             inputs = (sample_input, ), 
@@ -236,7 +242,8 @@ def main():
                 'torch_random_state': torch.get_rng_state(),
                 'cuda_random_state': torch.cuda.get_rng_state_all()
             }
-            torch.save(checkpoint, f"checkpoint/{experiment_id}_checkpoint.pth")
+            torch.save(checkpoint, f"checkpoint/{experiment_id}_checkpoint.pt")
+            torch.save(optimal_model, f"models/{experiment_id}_checkpoint.pth")
 
 
 @torch.no_grad()
@@ -351,8 +358,8 @@ def fine_tuning_with_KD(teacher_model: nn.Module,
                         student_model: nn.Module,
                         optimizer: optim.Optimizer, 
                         T: float = 2,
-                        soft_loss_weight: float = 0.25, 
-                        stu_loss_weight: float = 0.75) -> float:
+                        soft_loss_weight: float = 0.75, 
+                        stu_loss_weight: float = 0.25) -> float:
     """ fine tuning generated model with knowledge distillation with original model as teach """
     teacher_model.eval()
     student_model.train()
@@ -399,7 +406,7 @@ def evaluate_best_generated_model(original_model_with_info: Tuple,
         cur_top1_acc = new_model_top1_acc
         logging.info('Generated model wins')
     else:
-        optimal_model_with_info = optimal_model_with_info
+        optimal_model_with_info = original_model_with_info
         optimal_model_index = 0
         cur_top1_acc = original_model_top1_acc
         logging.info('Original model wins')
@@ -418,47 +425,49 @@ def get_args():
     parser = argparse.ArgumentParser(description='Compress mode using RLPruner')
     parser.add_argument('--model', '-m', type=str, default=None, 
                         help='the name of model, just used to track logging')
-    parser.add_argument('--model_id', '-mid', type=int, default=None, 
+    parser.add_argument('--model-id', '-mid', type=int, default=None, 
                         help='the id specific which model to be compressed')
     parser.add_argument('--dataset', '-ds', type=str, default=None, 
                         help='the dataset to train on')
-    parser.add_argument('--noise_var', '-nv', default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
+    parser.add_argument('--noise-var', '-nv', default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
                         help='variance when generating new prune distribution')
     parser.add_argument('--sample_step', '-ss', default=settings.RL_MAX_SAMPLE_STEP, 
                         help='the sample step of prune distribution')
-    parser.add_argument('--sample_num', '-sn', default=settings.RL_MAX_SAMPLE_NUM, 
+    parser.add_argument('--sample-num', '-sn', default=settings.RL_MAX_SAMPLE_NUM, 
                         help='the sample number of prune distribution')
-    parser.add_argument('--discount_factor', '-df', default=settings.RL_DISCOUNT_FACTOR, 
+    parser.add_argument('--discount-factor', '-df', default=settings.RL_DISCOUNT_FACTOR, 
                         help='the discount factor for multi sample step')
-    parser.add_argument('--step_length', '-sl', default=settings.RL_STEP_LENGTH, 
+    parser.add_argument('--step-length', '-sl', default=settings.RL_STEP_LENGTH, 
                         help='step length when updating prune distribution')
-    parser.add_argument('--greedy_epsilon', '-ge', default=settings.RL_GREEDY_EPSILON, 
+    parser.add_argument('--greedy-epsilon', '-ge', default=settings.RL_GREEDY_EPSILON, 
                         help='the probability to adopt random policy')
     parser.add_argument('--ppo', action='store_true', default=settings.RL_PPO_ENABLE, 
                         help='enable Proximal Policy Optimization')
-    parser.add_argument('--ppo_clip', '-ppoc', default=settings.RL_PPO_CLIP, 
+    parser.add_argument('--ppo-clip', '-ppoc', default=settings.RL_PPO_CLIP, 
                         help='the clip value for PPO')
     parser.add_argument('--lr', type=float, default=settings.T_FT_LR_SCHEDULAR_INITIAL_LR,
                         help='initial fine tuning learning rate')
-    parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
+    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--fine_tune_epoch', '-fte', type=int, default=settings.C_FT_EPOCH,
+    parser.add_argument('--fine-tune_epoch', '-fte', type=int, default=settings.C_FT_EPOCH,
                         help='fine tuning epoch for generated model')
-    parser.add_argument('--acc_change_threshold', '-act', type=int, default=settings.C_ACC_CHANGE_THRESHOLD,
+    parser.add_argument('--stu-co', '-sc', type=float, default=settings.T_FT_STU_CO,
+                        help='the student loss coefficient in knowledge distillation')
+    parser.add_argument('--acc-change-threshold', '-act', type=int, default=settings.C_ACC_CHANGE_THRESHOLD,
                         help='the acc change threshold to decide whether adopt generated model')
-    parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
+    parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
-    parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 
+    parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
                         help='num_workers for dataloader')
     parser.add_argument('--epoch', '-e', type=int, default=settings.C_COMPRESSION_EPOCH, 
                         help='total epoch to train')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
+    parser.add_argument('--random-seed', '-rs', type=int, default=None, 
                         help='the random seed for the current new compression')
     parser.add_argument('--resume', action='store_true', default=False, 
                         help='resume the previous target compression')
-    parser.add_argument('--resume_id', type=int, default=None, 
+    parser.add_argument('--resume-id', type=int, default=None, 
                         help='the id specific previous compression that to be resumed')
 
     args = parser.parse_args()
