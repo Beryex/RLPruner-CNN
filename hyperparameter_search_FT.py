@@ -9,7 +9,7 @@ import logging
 from conf import settings
 from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, 
                    adjust_prune_distribution_for_cluster, get_dataloader, setup_logging, 
-                   Prune_agent, torch_set_random_seed, torch_resume_random_seed)
+                   Prune_agent, torch_set_random_seed, torch_resume_random_seed, WarmUpLR)
 
 
 train_loader, valid_loader, test_loader, _, _ = get_dataloader('cifar100', 
@@ -47,6 +47,8 @@ def evaluate(model: nn.Module):
 def fine_tuning_with_KD(teacher_model: nn.Module,
                         student_model: nn.Module,
                         optimizer: optim.Optimizer, 
+                        lr_scheduler_warmup: WarmUpLR,
+                        dev_epoch: int,
                         T: float = 2,
                         soft_loss_weight: float = 0.25, 
                         stu_loss_weight: float = 0.75) -> float:
@@ -74,87 +76,94 @@ def fine_tuning_with_KD(teacher_model: nn.Module,
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
+
+        if dev_epoch <= warmup_epoch:
+            lr_scheduler_warmup.step()
     train_loss /= len(train_loader)
     return train_loss
 
-teacher_model = torch.load("models/vgg16_cifar100_1721008389_original.pth")
-generated_model = torch.load("models/1721025351_checkpoint.pth")
 
-setup_logging(experiment_id=int(time.time()), 
-            model_name='vgg16', 
-            dataset_name='cifar100', 
-            action='test')
-"""
-epoch_total = 20
-initial_lr=5 * 10 ** -3
-min_lr = 1 * 10 ** -6
-stu_co = 0.25
+def main():
+    setup_logging(experiment_id=int(time.time()), 
+                model_name='vgg16', 
+                dataset_name='cifar100', 
+                action='test')
+    '''global dev_epoch
+    global warmup_epoch
+    epoch_total = 16
+    initial_lr=5 * 10 ** -3
+    min_lr = 1 * 10 ** -6
+    stu_co = 0.25
+    warmup_epoch= 5
 
-teacher_model = torch.load("models/vgg16_cifar100_1721008389_original.pth")
-generated_model = torch.load("models/1721025351_checkpoint.pth")
-torch_set_random_seed(1)
-logging.info(f'\n')
-optimizer = optim.SGD(generated_model.parameters(),lr=initial_lr, 
-        momentum=0.9,weight_decay=5e-4)
-lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
-        epoch_total,eta_min=min_lr,last_epoch=-1)
-best_acc = -1
-best_trained_generated_model_with_info = None
-for dev_epoch in range(1, epoch_total + 1):
-    train_loss = fine_tuning_with_KD(teacher_model=teacher_model,
-            student_model=generated_model,
-            optimizer=optimizer,
-            soft_loss_weight= 1 - stu_co,
-            stu_loss_weight=stu_co)
-    top1_acc, top5_acc, _ = evaluate(generated_model)
-    lr_scheduler.step()
-    logging.info(f'train_loss:{train_loss}, top1_acc: {top1_acc}')
-    if best_acc < top1_acc:
-        best_acc = top1_acc
-print(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}')
-logging.info(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}')
-wandb.log({"best acc": best_acc, "epoch_total": epoch_total, "initial_lr": initial_lr, "min_lr": min_lr, "stu_co": stu_co})
-import sys
-sys.exit()
-"""
-for epoch_total in np.arange(1, 30, 3):
-    for initial_lr_ratio in np.arange(-2.5, -3.5 - 0.1, -0.5):
-        initial_lr = 10 ** initial_lr_ratio
-        for min_lr_ratio in np.arange(-4.5, -5.5 - 0.1, -0.5):
-            min_lr = 10 ** min_lr_ratio
+    teacher_model = torch.load("models/vgg16_cifar100_1721705939_original.pth")
+    generated_model = torch.load("models/test.pth")
+    torch_set_random_seed(1)
+    logging.info(f'\n')
+    optimizer = optim.SGD(generated_model.parameters(),lr=initial_lr, 
+            momentum=0.9,weight_decay=5e-4)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                        T_max=epoch_total - warmup_epoch,
+                                                        eta_min=min_lr,
+                                                        last_epoch=-1)
+    iter_per_epoch = len(train_loader)
+    lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * warmup_epoch)
+    best_acc = -1
+    for dev_epoch in range(1, epoch_total + 1):
+        train_loss = fine_tuning_with_KD(teacher_model=teacher_model,
+                student_model=generated_model,
+                optimizer=optimizer,
+                lr_scheduler_warmup=lr_scheduler_warmup,
+                soft_loss_weight= 1 - stu_co,
+                stu_loss_weight=stu_co)
+        top1_acc, top5_acc, _ = evaluate(generated_model)
+        if dev_epoch > warmup_epoch:
+            lr_scheduler.step()
+        logging.info(f'train_loss:{train_loss}, top1_acc: {top1_acc}')
+        wandb.log({"train_loss": train_loss, "top1_acc": top1_acc})
+        if best_acc < top1_acc:
+            best_acc = top1_acc
+    print(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}')
+    logging.info(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}')
+    wandb.log({"best acc": best_acc, "epoch_total": epoch_total, "initial_lr": initial_lr, "min_lr": min_lr, "stu_co": stu_co})'''
+    global warmup_epoch
+    epoch_total = 15
+    warmup_epoch = 5
+    for initial_lr in [1e-2, 5e-3, 1e-3]:
+        for min_lr in [1e-5, 5e-6, 1e-6]:
             for stu_co in np.arange(0, 1 + 0.1, 0.1):
-                for i in range(2):
-                    if i == 1:
-                        actual_epoch = epoch_total + 5
-                    else:
-                        actual_epoch = epoch_total
-                    teacher_model = torch.load("models/vgg16_cifar100_1721008389_original.pth")
-                    generated_model = torch.load("models/test.pth")
-                    torch_set_random_seed(1)
-                    logging.info(f'\n')
-                    optimizer = optim.SGD(generated_model.parameters(), 
-                                        lr=initial_lr, momentum=0.9, 
-                                        weight_decay=5e-4)
-                    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                                    epoch_total, 
-                                                                    eta_min=min_lr,
-                                                                    last_epoch=-1)
-                    best_acc = -1
-                    best_trained_generated_model_with_info = None
-                    for dev_epoch in range(1, actual_epoch + 1):
-                        train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
-                                                    student_model=generated_model, 
-                                                    optimizer=optimizer,
-                                                    soft_loss_weight= 1 - stu_co,
-                                                    stu_loss_weight=stu_co)
-                        top1_acc, top5_acc, _ = evaluate(generated_model)
+                teacher_model = torch.load("models/vgg16_cifar100_1721705939_original.pth")
+                generated_model = torch.load("models/test.pth")
+                torch_set_random_seed(1)
+                logging.info(f'\n')
+                optimizer = optim.SGD(generated_model.parameters(), 
+                                    lr=initial_lr, momentum=0.9, 
+                                    weight_decay=5e-4)
+                lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
+                                                                epoch_total, 
+                                                                eta_min=min_lr,
+                                                                last_epoch=-1)
+                iter_per_epoch = len(train_loader)
+                lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * warmup_epoch)
+                
+                best_acc = 0
+                for dev_epoch in range(1, epoch_total + 1):
+                    train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
+                                                student_model=generated_model, 
+                                                optimizer=optimizer,
+                                                lr_scheduler_warmup=lr_scheduler_warmup,
+                                                dev_epoch=dev_epoch,
+                                                soft_loss_weight= 1 - stu_co,
+                                                stu_loss_weight=stu_co)
+                    top1_acc, top5_acc, _ = evaluate(generated_model)
+                    if dev_epoch > warmup_epoch:
                         lr_scheduler.step()
-                        logging.info(f'train_loss:{train_loss}, top1_acc: {top1_acc}')
+                    logging.info(f'train_loss:{train_loss}, top1_acc: {top1_acc}')
 
-                        if best_acc < top1_acc:
-                            best_acc = top1_acc
-                    print(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}, use_addi: {i}')
-                    logging.info(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}, use_addi: {i}')
-                    wandb.log({"best acc": best_acc, "epoch_total": epoch_total, "initial_lr": initial_lr, "min_lr": min_lr, "stu_co": stu_co, "use_addi": i})
-            if epoch_total == 1:
-                break
+                    if best_acc < top1_acc:
+                        best_acc = top1_acc
+                print(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}')
+                logging.info(f'best acc: {best_acc}, epoch_total: {epoch_total}, initial_lr: {initial_lr}, min_lr: {min_lr}, stu_co: {stu_co}')
+                wandb.log({"best acc": best_acc, "epoch_total": epoch_total, "initial_lr": initial_lr, "min_lr": min_lr, "stu_co": stu_co})
+if __name__ == '__main__':
+    main()

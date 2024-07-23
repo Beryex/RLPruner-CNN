@@ -29,15 +29,16 @@ D_VAL_PROPORTION = 0
 
 # hyperparameter for training
 T_EPOCH = 250
-T_LR_SCHEDULAR_MIN_LR = 1e-5
 T_LR_SCHEDULAR_INITIAL_LR = 1e-1
+T_LR_SCHEDULAR_MIN_LR = 1e-6
 
-T_FT_EPOCH = 20
+T_FT_EPOCH = 15
 T_FT_LR_SCHEDULAR_INITIAL_LR = 5e-3
 T_FT_STU_CO = 0.25
 
 T_BATCH_SIZE = 256
 T_NUM_WORKER = 8
+T_WARMUP_EPOCH = 5
 
 
 # hyperparameter for compressing

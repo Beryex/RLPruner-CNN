@@ -16,7 +16,7 @@ import logging
 from conf import settings
 from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, 
                    adjust_prune_distribution_for_cluster, get_dataloader, setup_logging, 
-                   Prune_agent, torch_set_random_seed, torch_resume_random_seed)
+                   Prune_agent, torch_set_random_seed, torch_resume_random_seed, WarmUpLR)
 
 
 def main():
@@ -151,30 +151,37 @@ def main():
 
             """ fine tuning generated model """
             optimizer = optim.SGD(generated_model.parameters(), 
-                                  lr=args.lr, momentum=0.9, 
+                                  lr=args.lr, 
+                                  momentum=0.9, 
                                   weight_decay=5e-4)
             lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
                                                                 args.fine_tune_epoch - 5, 
                                                                 eta_min=args.min_lr,
                                                                 last_epoch=-1)
+            iter_per_epoch = len(train_loader)
+            lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * args.warmup_epoch)
+            
             best_acc = 0
             with tqdm(total=args.fine_tune_epoch, desc=f'Fine tuning', unit='epoch', leave=False) as pbar2:
                 for dev_epoch in range(1, args.fine_tune_epoch + 1):
                     train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
                                                     student_model=generated_model, 
                                                     optimizer=optimizer,
+                                                    lr_scheduler_warmup=lr_scheduler_warmup,
                                                     soft_loss_weight=1-args.stu_co,
-                                                    stu_loss_weight=args.stu_co)
+                                                    stu_loss_weight=args.stu_co,
+                                                    dev_epoch=dev_epoch)
                     top1_acc, top5_acc, _ = evaluate(generated_model)
                     logging.info(f"epoch: {dev_epoch}/{args.fine_tune_epoch}, "
                                 f"train_Loss: {train_loss}, "
                                 f"top1_acc: {top1_acc}, "
                                 f"top5_acc: {top5_acc}")
-                    lr_scheduler.step()
+                    
+                    if dev_epoch > args.warmup_epoch:
+                        lr_scheduler.step()
 
                     if best_acc < top1_acc:
                         best_acc = top1_acc
-                        torch.save(generated_model, f"models/{experiment_id}_checkpoint.pth")
                         model_with_info = copy.deepcopy(generated_model_with_info)
                 
                     pbar2.set_postfix({'train_loss': train_loss,
@@ -344,9 +351,11 @@ def sample_trajectory(cur_step: int,
 def fine_tuning_with_KD(teacher_model: nn.Module,
                         student_model: nn.Module,
                         optimizer: optim.Optimizer, 
+                        lr_scheduler_warmup: WarmUpLR,
                         T: float = 2,
                         soft_loss_weight: float = 0.75, 
-                        stu_loss_weight: float = 0.25) -> float:
+                        stu_loss_weight: float = 0.25,
+                        dev_epoch: int = -1) -> float:
     """ fine tuning generated model with knowledge distillation with original model as teach """
     teacher_model.eval()
     student_model.train()
@@ -371,6 +380,10 @@ def fine_tuning_with_KD(teacher_model: nn.Module,
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
+
+        if dev_epoch <= args.warmup_epoch:
+            lr_scheduler_warmup.step()
+
     train_loss /= len(train_loader)
     return train_loss
 
@@ -407,6 +420,8 @@ def get_args():
                         help='initial fine tuning learning rate')
     parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
                         help='minimal learning rate')
+    parser.add_argument('--warmup-epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
+                        help='warmup epoch number for lr schedular')
     parser.add_argument('--fine-tune_epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
                         help='fine tuning epoch for generated model')
     parser.add_argument('--stu-co', '-sc', type=float, default=settings.T_FT_STU_CO,

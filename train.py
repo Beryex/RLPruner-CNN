@@ -10,18 +10,22 @@ import logging
 from typing import Tuple
 
 from conf import settings
-from utils import get_model, get_dataloader, setup_logging, torch_set_random_seed
+from utils import get_model, get_dataloader, setup_logging, torch_set_random_seed, WarmUpLR
 
 
 def main():
     """ Train model and save model using early stop on test dataset """
+    global args
+    global epoch
     args = get_args()
     if args.random_seed is not None:
         random_seed = args.random_seed
+        experiment_id = int(time.time())
     else:
         random_seed = int(time.time())
+        experiment_id = random_seed
     device = args.device
-    setup_logging(experiment_id=random_seed, 
+    setup_logging(experiment_id=experiment_id, 
                   model_name=args.model, 
                   dataset_name=args.dataset, 
                   action='train')
@@ -37,28 +41,42 @@ def main():
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                        T_max=args.epoch - 10, 
+                                                        T_max=args.epoch - args.warmup_epoch - 10, 
                                                         eta_min= args.min_lr,
                                                         last_epoch=-1)
+    iter_per_epoch = len(train_loader)
+    lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * args.warmup_epoch)
+    
     best_acc = 0.0
-
     with tqdm(total=args.epoch, desc=f'Training', unit='epoch') as pbar:
         for epoch in range(1, args.epoch + 1):
-            train_loss = train(model, train_loader, loss_function, optimizer, device)
-            top1_acc, top5_acc, _ = evaluate(model, test_loader, loss_function, device)
+            train_loss = train(model, 
+                               train_loader, 
+                               loss_function, 
+                               optimizer, 
+                               lr_scheduler_warmup, 
+                               device)
+            top1_acc, top5_acc, _ = evaluate(model, 
+                                             test_loader, 
+                                             loss_function, 
+                                             device)
             logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, '
                         f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}')
             wandb.log({"epoch": epoch, "train_loss": train_loss, 
                     "top1_acc": top1_acc, "top5_acc": top5_acc})
 
-            lr_scheduler.step()
-            pbar.set_postfix({'Train loss': train_loss, 'Top1 acc': top1_acc})
-            pbar.update(1)
+            if epoch > args.warmup_epoch:
+                lr_scheduler.step()
+            
+            for param_group in optimizer.param_groups:
+                print('Current learning rate:', param_group['lr'])
 
-            # start to save best performance model after first training milestone
             if best_acc < top1_acc:
                 best_acc = top1_acc
-                torch.save(model, f'models/{args.model}_{args.dataset}_{random_seed}_original.pth')
+                torch.save(model, f'models/{args.model}_{args.dataset}_{experiment_id}_original.pth')
+            
+            pbar.set_postfix({'Train loss': train_loss, 'Top1 acc': top1_acc})
+            pbar.update(1)
     
     wandb.finish()
 
@@ -67,6 +85,7 @@ def train(model: nn.Module,
           train_loader: DataLoader, 
           loss_function: nn.Module,
           optimizer: optim.Optimizer,
+          lr_scheduler_warmup: WarmUpLR,
           device: str) -> float:
     """ Train model and save using early stop on test dataset """
     model.train()
@@ -81,6 +100,9 @@ def train(model: nn.Module,
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
+
+        if epoch <= args.warmup_epoch:
+            lr_scheduler_warmup.step()
 
     train_loss /= len(train_loader)
     return train_loss
@@ -121,17 +143,19 @@ def get_args():
                         help='the dataset to train on')
     parser.add_argument('--lr', type=float, default=settings.T_LR_SCHEDULAR_INITIAL_LR,
                         help='initial learning rate')
-    parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
+    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
+    parser.add_argument('--warmup-epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
+                        help='warmup epoch number for lr schedular')
+    parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
-    parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 
+    parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
                         help='num_workers for dataloader')
     parser.add_argument('--epoch', '-e', type=int, default=settings.T_EPOCH, 
                         help='total epoch to train')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
+    parser.add_argument('--random-seed', '-rs', type=int, default=None, 
                         help='the random seed for the current new compression')
 
     args = parser.parse_args()
