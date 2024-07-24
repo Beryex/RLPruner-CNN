@@ -67,7 +67,12 @@ def main():
         
         prev_epoch = 0
 
-        setup_logging(experiment_id, model_name, dataset_name, action='compress', use_wandb=args.use_wandb)
+        setup_logging(log_dir=args.log_dir,
+                      experiment_id=experiment_id, 
+                      model_name=args.model, 
+                      dataset_name=args.dataset, 
+                      action='compress',
+                      use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
 
         model = torch.load(f"{pretrained_path}").to(device)
