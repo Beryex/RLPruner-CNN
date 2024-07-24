@@ -28,7 +28,7 @@ D_VAL_PROPORTION = 0
 
 
 # hyperparameter for training
-T_EPOCH = 300
+T_EPOCH = 250
 T_LR_SCHEDULER_INITIAL_LR = 1e-1
 T_LR_SCHEDULER_MIN_LR = 1e-6
 

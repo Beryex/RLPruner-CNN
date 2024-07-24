@@ -414,29 +414,29 @@ def get_args():
                         help='the overall pruning sparsity')
     parser.add_argument('--prune_strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
                         help='strategy to evaluate unimportant weights')
-    parser.add_argument('--prune_filter_ratio', '-pfr', default=settings.C_PRUNE_FILTER_RATIO,
+    parser.add_argument('--prune_filter_ratio', '-pfr', type=float, default=settings.C_PRUNE_FILTER_RATIO,
                         help='what ratio of filter to prune for each pruning')
-    parser.add_argument('--noise_var', '-nv', default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
+    parser.add_argument('--noise_var', '-nv', type=float, default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
                         help='variance when generating new prune distribution')
     parser.add_argument('--lr_epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
                         help='max epoch for reinforcement learning sampling epoch')
-    parser.add_argument('--sample_step', '-ss', default=settings.RL_MAX_SAMPLE_STEP, 
+    parser.add_argument('--sample_step', '-ss', type=int, default=settings.RL_MAX_SAMPLE_STEP, 
                         help='the sample step of prune distribution')
-    parser.add_argument('--sample_num', '-sn', default=settings.RL_MAX_SAMPLE_NUM, 
+    parser.add_argument('--sample_num', '-sn', type=int, default=settings.RL_MAX_SAMPLE_NUM, 
                         help='the sample number of prune distribution')
-    parser.add_argument('--discount_factor', '-df', default=settings.RL_DISCOUNT_FACTOR, 
+    parser.add_argument('--discount_factor', '-df', type=float, default=settings.RL_DISCOUNT_FACTOR, 
                         help='the discount factor for multi sample step')
-    parser.add_argument('--step_length', '-sl', default=settings.RL_STEP_LENGTH, 
+    parser.add_argument('--step_length', '-sl', type=float, default=settings.RL_STEP_LENGTH, 
                         help='step length when updating prune distribution')
-    parser.add_argument('--greedy_epsilon', '-ge', default=settings.RL_GREEDY_EPSILON, 
+    parser.add_argument('--greedy_epsilon', '-ge', type=float, default=settings.RL_GREEDY_EPSILON, 
                         help='the probability to adopt random policy')
     parser.add_argument('--ppo', action='store_true', default=settings.RL_PPO_ENABLE, 
                         help='enable Proximal Policy Optimization')
-    parser.add_argument('--ppo_clip', '-ppoc', default=settings.RL_PPO_CLIP, 
+    parser.add_argument('--ppo_clip', '-ppoc', type=float, default=settings.RL_PPO_CLIP, 
                         help='the clip value for PPO')
-    parser.add_argument('--lr', type=float, default=settings.T_FT_LR_SCHEDULER_INITIAL_LR,
+    parser.add_argument('--lr', '-lr', type=float, default=settings.T_FT_LR_SCHEDULER_INITIAL_LR,
                         help='initial fine tuning learning rate')
-    parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
+    parser.add_argument('--min_lr', '-mlr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
     parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
                         help='warmup epoch number for lr scheduler')
