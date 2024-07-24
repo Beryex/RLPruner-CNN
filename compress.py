@@ -145,10 +145,12 @@ def main():
 
         for epoch in range(1, args.epoch + 1):
             """ get generated model """
-            generated_model_with_info = generate_architecture(model_with_info, 
-                                                              prune_agent, 
-                                                              epoch=epoch)
+            generated_model_with_info, best_Q_value = generate_architecture(model_with_info, 
+                                                                            prune_agent, 
+                                                                            epoch=epoch)
             generated_model = generated_model_with_info[0]
+            best_acc, _, _ = evaluate(generated_model)
+            model_with_info = copy.deepcopy(generated_model_with_info)
 
             """ fine tuning generated model """
             optimizer = optim.SGD(generated_model.parameters(), 
@@ -162,21 +164,20 @@ def main():
             iter_per_epoch = len(train_loader)
             lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * args.warmup_epoch)
             
-            best_acc = 0
             with tqdm(total=args.fine_tune_epoch, desc=f'Fine tuning', unit='epoch', leave=False) as pbar2:
                 for ft_epoch in range(1, args.fine_tune_epoch + 1):
                     train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
-                                                    student_model=generated_model, 
-                                                    optimizer=optimizer,
-                                                    lr_scheduler_warmup=lr_scheduler_warmup,
-                                                    soft_loss_weight=1-args.stu_co,
-                                                    stu_loss_weight=args.stu_co,
-                                                    ft_epoch=ft_epoch)
+                                                     student_model=generated_model, 
+                                                     optimizer=optimizer,
+                                                     lr_scheduler_warmup=lr_scheduler_warmup,
+                                                     soft_loss_weight=1-args.stu_co,
+                                                     stu_loss_weight=args.stu_co,
+                                                     ft_epoch=ft_epoch)
                     top1_acc, top5_acc, _ = evaluate(generated_model)
                     logging.info(f"epoch: {ft_epoch}/{args.fine_tune_epoch}, "
-                                f"train_Loss: {train_loss}, "
-                                f"top1_acc: {top1_acc}, "
-                                f"top5_acc: {top5_acc}")
+                                 f"train_Loss: {train_loss}, "
+                                 f"top1_acc: {top1_acc}, "
+                                 f"top5_acc: {top5_acc}")
                     
                     if ft_epoch > args.warmup_epoch:
                         lr_scheduler.step()
@@ -199,15 +200,17 @@ def main():
             Para_compression_ratio = 1 - model_Params / original_para_num
 
             wandb.log({"top1_acc": best_acc, 
+                       "best_Q_value": best_Q_value,
                        "modification_num": prune_agent.modification_num, 
                        "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                        "Para_compression_ratio": Para_compression_ratio}, 
-                    step=epoch)
+                       step=epoch)
             for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
                         step=epoch)
             logging.info(f'Epoch: {epoch}/{args.epoch}, ' 
                          f'top1_acc: {best_acc}, '
+                         f'best_Q_value: {best_Q_value}, '
                          f'modification_num: {prune_agent.modification_num}, '
                          f'compression ratio: FLOPs: {FLOPs_compression_ratio}, '
                          f'Parameter number {Para_compression_ratio}')
@@ -237,11 +240,12 @@ def main():
                 'cuda_random_state': torch.cuda.get_rng_state_all()
             }
             torch.save(checkpoint, f"checkpoint/{experiment_id}_checkpoint.pt")
-            torch.save(model_with_info[0], f"models/{experiment_id}_checkpoint.pth")
+            torch.save(model_with_info[0], f"models/{experiment_id}_checkpoint_{epoch}.pth")
 
             pbar.set_postfix({'Para': Para_compression_ratio, 
                               'FLOPs': FLOPs_compression_ratio, 
-                              'Top1 acc': best_acc})
+                              'Q_value': best_Q_value,
+                              'Top1_acc': best_acc})
             pbar.update(1)
 
 
@@ -270,8 +274,7 @@ def evaluate(model: nn.Module):
 
 
 def generate_architecture(original_model_with_info: Tuple,
-                          prune_agent: Prune_agent,
-                          epoch: int) -> Tuple[nn.Module, List, List]:
+                          prune_agent: Prune_agent) -> Tuple[nn.Module, List, List]:
     """ Generate architecture using RL """
     best_Q_value = 0
     with tqdm(total=args.lr_epoch, desc=f'Sampling', unit='epoch', leave=False) as pbar:
@@ -310,9 +313,8 @@ def generate_architecture(original_model_with_info: Tuple,
         best_model_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
         logging.info(f'Exploitation: model {best_model_index} is the best new model')
     best_generated_model_with_info = prune_agent.model_info_list[best_model_index]
-    wandb.log({"optimal_model_reward": prune_agent.ReplayBuffer[best_model_index, 0]}, step=epoch)
     
-    return best_generated_model_with_info
+    return best_generated_model_with_info, best_Q_value
 
 
 def sample_trajectory(cur_step: int, 

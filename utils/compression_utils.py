@@ -91,6 +91,8 @@ class Prune_agent():
         for target_layer_idx, count in enumerate(prune_counter):
             target_layer = prunable_layers[target_layer_idx]
             if isinstance(target_layer, CONV_LAYERS):
+                if target_layer.out_channels - 1 == 0:
+                    continue
                 if prune_strategy == "variance":
                     weight_importance = torch.var(target_layer.weight.data, dim = [1, 2, 3])
                 elif prune_strategy == "l1":
@@ -109,6 +111,8 @@ class Prune_agent():
                                         next_layers, 
                                         decred_layer)
             elif isinstance(target_layer, (nn.Linear)):
+                if target_layer.out_features - 1 == 0:
+                    return
                 if prune_strategy == "variance":
                     weight_importance = torch.var(target_layer.weight.data, dim = 1)
                 elif prune_strategy == "l1":
@@ -135,8 +139,6 @@ def prune_conv_filter(target_layer_idx: int,
                       next_layers: List,
                       decred_layer: dict) -> None:
     """ Prune one conv filter and decrease next layers' input dim """
-    if target_layer.out_channels - 1 == 0:
-        return
     with torch.no_grad():
         target_layer.weight.data = torch.cat([target_layer.weight.data[:target_filter], 
                                               target_layer.weight.data[target_filter+1:]], 
@@ -212,8 +214,6 @@ def prune_linear_filter(target_layer_idx: int,
                         next_layers: List, 
                         decred_layer: dict) -> None:
     """ Prune one linear filter and decrease next layers' input dim """
-    if target_layer.out_features - 1 == 0:
-        return
     with torch.no_grad():
         target_layer.weight.data = torch.cat([target_layer.weight.data[:target_filter], 
                                               target_layer.weight.data[target_filter+1:]], 
