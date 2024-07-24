@@ -28,23 +28,30 @@ def main():
     global loss_function
     args = get_args()
     device = args.device
+    model_name = args.model
+    dataset_name = args.dataset
+    checkpoint_path = f"{args.checkpoint_dir}/{model_name}_{dataset_name}"
+    pretrained_path = f"{args.pretrained_dir}/{model_name}_{dataset_name}_original.pth"
+    compressed_path = f"{args.compressed_dir}/{model_name}_{dataset_name}_compressed.pth"
 
     """ Setup logging and get model, data loader, loss function """
     if args.resume:
-        prev_checkpoint = torch.load(f"checkpoint/{args.resume_id}_checkpoint.pth")
+        prev_checkpoint = torch.load(f"{checkpoint_path}/{args.resume_epoch}/checkpoint.pt")
+        
         random_seed = prev_checkpoint['random_seed']
-        experiment_id = args.resume_id
-
+        experiment_id = prev_checkpoint['experiment_id']
         prev_epoch = prev_checkpoint['epoch']
 
-        model_name = prev_checkpoint['model_name']
-        dataset_name = prev_checkpoint['dataset_name']
-        setup_logging(experiment_id, model_name, dataset_name, action='compress', use_wandb=args.use_wandb)
+        setup_logging(log_dir=args.log_dir,
+                      experiment_id=experiment_id, 
+                      model_name=args.model, 
+                      dataset_name=args.dataset, 
+                      action='compress',
+                      use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
 
-        model = torch.load(f'models/{experiment_id}_checkpoint.pth').to(device)
-        teacher_id = prev_checkpoint['teacher_id']
-        teacher_model = torch.load(f'models/{model_name}_{dataset_name}_{teacher_id}_original.pth').to(device)
+        model = torch.load(f"{checkpoint_path}/{args.resume_epoch}/model.pth").to(device)
+        teacher_model = torch.load(f"{pretrained_path}").to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
                                                                        batch_size=args.batch_size, 
                                                                        num_workers=args.num_worker)
@@ -60,13 +67,10 @@ def main():
         
         prev_epoch = 0
 
-        model_name = args.model
-        dataset_name = args.dataset
         setup_logging(experiment_id, model_name, dataset_name, action='compress', use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
 
-        model = torch.load(f'models/{model_name}_{dataset_name}_{args.model_id}_original.pth').to(device)
-        teacher_id = args.model_id
+        model = torch.load(f"{pretrained_path}").to(device)
         teacher_model = copy.deepcopy(model).to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
                                                                        batch_size=args.batch_size, 
@@ -139,15 +143,15 @@ def main():
         logging.info(f'Start with random seed: {random_seed}')
     
     """ begin compressing """
-    with tqdm(total=args.epoch, desc=f'Compressing', unit='epoch') as pbar:
+    pruning_epoch = round(args.sparsity * 100)
+    with tqdm(total=pruning_epoch, desc=f'Compressing', unit='epoch') as pbar:
         for _ in range(prev_epoch):
             pbar.update(1)
 
-        for epoch in range(1, args.epoch + 1):
+        for epoch in range(1, pruning_epoch + 1):
             """ get generated model """
             generated_model_with_info, best_Q_value = generate_architecture(model_with_info, 
-                                                                            prune_agent, 
-                                                                            epoch=epoch)
+                                                                            prune_agent)
             generated_model = generated_model_with_info[0]
             best_acc, _, _ = evaluate(generated_model)
             model_with_info = copy.deepcopy(generated_model_with_info)
@@ -208,7 +212,7 @@ def main():
             for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
                         step=epoch)
-            logging.info(f'Epoch: {epoch}/{args.epoch}, ' 
+            logging.info(f'Epoch: {epoch}/{pruning_epoch}, ' 
                          f'top1_acc: {best_acc}, '
                          f'best_Q_value: {best_Q_value}, '
                          f'modification_num: {prune_agent.modification_num}, '
@@ -220,11 +224,8 @@ def main():
             # save checkpoint
             checkpoint = {
                 # compression parameter
+                'experiment_id': experiment_id,
                 'epoch': epoch,
-                'reached_final_fine_tuning': False,
-                'model_name': model_name,
-                'teacher_id': teacher_id,
-                'dataset_name': dataset_name,
                 'prune_agent': prune_agent,
                 'original_para_num': original_para_num,
                 'original_FLOPs_num': original_FLOPs_num,
@@ -239,14 +240,16 @@ def main():
                 'torch_random_state': torch.get_rng_state(),
                 'cuda_random_state': torch.cuda.get_rng_state_all()
             }
-            torch.save(checkpoint, f"checkpoint/{experiment_id}_checkpoint.pt")
-            torch.save(model_with_info[0], f"models/{experiment_id}_checkpoint_{epoch}.pth")
+            torch.save(checkpoint, f"{checkpoint_path}/{epoch}/checkpoint.pt")
+            torch.save(model_with_info[0], f"{checkpoint_path}/{epoch}/model.pth")
 
             pbar.set_postfix({'Para': Para_compression_ratio, 
                               'FLOPs': FLOPs_compression_ratio, 
                               'Q_value': best_Q_value,
                               'Top1_acc': best_acc})
             pbar.update(1)
+        
+        torch.save(model_with_info[0], f"{compressed_path}")
 
 
 @torch.no_grad()
@@ -400,58 +403,65 @@ def get_args():
     parser = argparse.ArgumentParser(description='Compress mode using RLPruner')
     parser.add_argument('--model', '-m', type=str, default=None, 
                         help='the name of model, just used to track logging')
-    parser.add_argument('--model-id', '-mid', type=int, default=None, 
-                        help='the id specific which model to be compressed')
     parser.add_argument('--dataset', '-ds', type=str, default=None, 
                         help='the dataset to train on')
-    parser.add_argument('--prune-strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
+    parser.add_argument('--sparsity', '-s', type=float, default=settings.C_SPARSITY, 
+                        help='the overall pruning sparsity')
+    parser.add_argument('--prune_strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
                         help='strategy to evaluate unimportant weights')
-    parser.add_argument('--prune-filter-ratio', '-pfr', default=settings.C_PRUNE_FILTER_RATIO,
+    parser.add_argument('--prune_filter_ratio', '-pfr', default=settings.C_PRUNE_FILTER_RATIO,
                         help='what ratio of filter to prune for each pruning')
-    parser.add_argument('--noise-var', '-nv', default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
+    parser.add_argument('--noise_var', '-nv', default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
                         help='variance when generating new prune distribution')
-    parser.add_argument('--lr-epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
+    parser.add_argument('--lr_epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
                         help='max epoch for reinforcement learning sampling epoch')
-    parser.add_argument('--sample-step', '-ss', default=settings.RL_MAX_SAMPLE_STEP, 
+    parser.add_argument('--sample_step', '-ss', default=settings.RL_MAX_SAMPLE_STEP, 
                         help='the sample step of prune distribution')
-    parser.add_argument('--sample-num', '-sn', default=settings.RL_MAX_SAMPLE_NUM, 
+    parser.add_argument('--sample_num', '-sn', default=settings.RL_MAX_SAMPLE_NUM, 
                         help='the sample number of prune distribution')
-    parser.add_argument('--discount-factor', '-df', default=settings.RL_DISCOUNT_FACTOR, 
+    parser.add_argument('--discount_factor', '-df', default=settings.RL_DISCOUNT_FACTOR, 
                         help='the discount factor for multi sample step')
-    parser.add_argument('--step-length', '-sl', default=settings.RL_STEP_LENGTH, 
+    parser.add_argument('--step_length', '-sl', default=settings.RL_STEP_LENGTH, 
                         help='step length when updating prune distribution')
-    parser.add_argument('--greedy-epsilon', '-ge', default=settings.RL_GREEDY_EPSILON, 
+    parser.add_argument('--greedy_epsilon', '-ge', default=settings.RL_GREEDY_EPSILON, 
                         help='the probability to adopt random policy')
     parser.add_argument('--ppo', action='store_true', default=settings.RL_PPO_ENABLE, 
                         help='enable Proximal Policy Optimization')
-    parser.add_argument('--ppo-clip', '-ppoc', default=settings.RL_PPO_CLIP, 
+    parser.add_argument('--ppo_clip', '-ppoc', default=settings.RL_PPO_CLIP, 
                         help='the clip value for PPO')
     parser.add_argument('--lr', type=float, default=settings.T_FT_LR_SCHEDULER_INITIAL_LR,
                         help='initial fine tuning learning rate')
-    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
+    parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--warmup-epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
+    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
                         help='warmup epoch number for lr scheduler')
-    parser.add_argument('--fine-tune-epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
+    parser.add_argument('--fine_tune_epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
                         help='fine tuning epoch for generated model')
-    parser.add_argument('--stu-co', '-sc', type=float, default=settings.T_FT_STU_CO,
+    parser.add_argument('--stu_co', '-sc', type=float, default=settings.T_FT_STU_CO,
                         help='the student loss coefficient in knowledge distillation')
-    parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
+    parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
-    parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
-                        help='num-workers for dataloader')
-    parser.add_argument('--epoch', '-e', type=int, default=settings.C_COMPRESSION_EPOCH, 
-                        help='total epoch to train')
+    parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 
+                        help='number of workers for dataloader')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random-seed', '-rs', type=int, default=None, 
+    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
                         help='the random seed for the current new compression')
     parser.add_argument('--resume', action='store_true', default=False, 
                         help='resume the previous target compression')
-    parser.add_argument('--resume-id', type=int, default=None, 
-                        help='the id specific previous compression that to be resumed')
-    parser.add_argument('--use-wandb', action='store_true', default=False, 
+    parser.add_argument('--resume_epoch', type=int, default=None, 
+                        help='the specific previous compression epoch that to be resumed')
+    parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
+    
+    parser.add_argument('--log_dir', '-log', type=str, default='log', 
+                        help='the directory containing logging text')
+    parser.add_argument('--checkpoint_dir', '-ckpt', type=str, default='checkpoint', 
+                        help='the directory containing checkpoints')
+    parser.add_argument('--pretrained_dir', '-pdir', type=str, default='pretrained_model', 
+                        help='the directory containing pretrained model')
+    parser.add_argument('--compressed_dir', '-cdir', type=str, default='compressed_model', 
+                        help='the directory containing compressed model')
 
     args = parser.parse_args()
     check_args(args)
@@ -460,16 +470,16 @@ def get_args():
 
 def check_args(args: argparse.Namespace):
     if args.resume == False:
-        if args.model_id is None:
-            raise ValueError(f"the specific model {args.model_id} should be provided")
+        if args.model is None:
+            raise ValueError(f"the specific model {args.model} should be provided")
         if args.dataset is None:
             raise ValueError(f"the specific type of dataset to train on should be provided, "
-                             f"please select one of 'mnist', 'cifar10', 'cifar100'")
+                             f"please select one of {DATASETS}")
         elif args.dataset not in DATASETS:
             raise ValueError(f"the provided dataset {args.dataset} is not supported, "
                              f"please select one of {DATASETS}")
-    elif args.resume_id is None:
-        raise ValueError(f"the specific resume_id {args.resume_id} should be provided, "
+    elif args.resume_epoch is None:
+        raise ValueError(f"the specific resume-epoch {args.resume_epoch} should be provided, "
                          f"please specify which compression to resume")
     
     if args.prune_strategy not in PRUNE_STRATEGY:

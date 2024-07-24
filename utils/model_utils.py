@@ -3,6 +3,12 @@ from torch import nn, Tensor
 from typing import Tuple, List
 import queue
 
+from models.lenet import LeNet5
+from models.vgg import VGG16
+from models.googlenet import GoogleNet
+from models.resnet import ResNet50
+from models.unet import UNet
+
 
 # Define layer types for pruning and normalization
 PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, 
@@ -10,6 +16,9 @@ PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d,
 NORM_LAYERS = (nn.BatchNorm2d)
 CONV_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, 
                nn.ConvTranspose2d, nn.ConvTranspose3d)
+
+# Define supported models
+MODELS = ["lenet5", "vgg16", "googlenet", "resnet50", "unet"]
 
 # Define tensor comparision threshold for torch.allclose
 # This is necessary because of tensor computation overflow
@@ -34,7 +43,7 @@ def get_model(model_name: str, in_channels: int, num_class: int) -> nn.Module:
         from models.unet import UNet
         return UNet(in_channels, num_class)
     else:
-        return None
+        raise ValueError(f"Unsupported model: {model_name}")
 
 
 def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:

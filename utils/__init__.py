@@ -8,6 +8,7 @@ from utils.model_utils import (get_model,
                                extract_prunable_layers_info, 
                                extract_prunable_layer_dependence, 
                                adjust_prune_distribution_for_cluster,
+                               MODELS,
                                PRUNABLE_LAYERS,
                                NORM_LAYERS,
                                CONV_LAYERS)

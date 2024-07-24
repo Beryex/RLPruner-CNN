@@ -42,6 +42,6 @@ T_WARMUP_EPOCH = 5
 
 
 # hyperparameter for compressing
+C_SPARSITY = 0.95
 C_PRUNE_STRATEGY = "variance"
-C_PRUNE_FILTER_RATIO = 0.01
-C_COMPRESSION_EPOCH = 99      
+C_PRUNE_FILTER_RATIO = 0.01     

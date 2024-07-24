@@ -10,7 +10,8 @@ import logging
 from typing import Tuple
 
 from conf import settings
-from utils import get_model, get_dataloader, setup_logging, torch_set_random_seed, WarmUpLR
+from utils import (get_model, get_dataloader, setup_logging, torch_set_random_seed, 
+                   WarmUpLR, MODELS, DATASETS)
 
 
 def main():
@@ -18,6 +19,8 @@ def main():
     global args
     global epoch
     args = get_args()
+    output_path = f"{args.output}/{args.model}_{args.dataset}_original.pth"
+
     if args.random_seed is not None:
         random_seed = args.random_seed
         experiment_id = int(time.time())
@@ -25,7 +28,8 @@ def main():
         random_seed = int(time.time())
         experiment_id = random_seed
     device = args.device
-    setup_logging(experiment_id=experiment_id, 
+    setup_logging(log_dir=args.log_dir,
+                  experiment_id=experiment_id, 
                   model_name=args.model, 
                   dataset_name=args.dataset, 
                   action='train',
@@ -71,7 +75,7 @@ def main():
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
-                torch.save(model, f'models/{args.model}_{args.dataset}_{experiment_id}_original.pth')
+                torch.save(model, f"{output_path}")
             
             pbar.set_postfix({'Train loss': train_loss, 'Top1 acc': top1_acc})
             pbar.update(1)
@@ -141,22 +145,29 @@ def get_args():
                         help='the dataset to train on')
     parser.add_argument('--lr', type=float, default=settings.T_LR_SCHEDULER_INITIAL_LR,
                         help='initial learning rate')
-    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
+    parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--warmup-epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
+    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
                         help='warmup epoch number for lr scheduler')
-    parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
+    parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
-    parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
-                        help='num_workers for dataloader')
+    parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 
+                        help='number of workers for dataloader')
     parser.add_argument('--epoch', '-e', type=int, default=settings.T_EPOCH, 
                         help='total epoch to train')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random-seed', '-rs', type=int, default=None, 
+    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
                         help='the random seed for the current new compression')
-    parser.add_argument('--use-wandb', action='store_true', default=False, 
+    parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
+    
+    parser.add_argument('--log_dir', '-log', type=str, default='log', 
+                        help='the directory containing logging text')
+    parser.add_argument('--model_dir', '-mdir', type=str, default='models', 
+                        help='the directory containing model scripts')
+    parser.add_argument('--output', '-o', type=str, default='pretrained_model', 
+                        help='the directory to store output model')
 
     args = parser.parse_args()
     check_args(args)
@@ -167,16 +178,16 @@ def get_args():
 def check_args(args: argparse.Namespace):
     if args.model is None:
         raise TypeError(f"the specific type of model should be provided, "
-                        f"please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
-    elif args.model not in ['lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet']:
-        raise TypeError(f"the specific model {args.net} is not supported, "
-                        f"please select one of 'lenet5', 'vgg16', 'googlenet', 'resnet50', 'unet'")
+                        f"please select one of {MODELS}")
+    elif args.model not in MODELS:
+        raise TypeError(f"the specific model {args.model} is not supported, "
+                        f"please select one of {MODELS}")
     if args.dataset is None:
-        raise TypeError(f"the specific type of dataset to train on should be provided, "
-                        f"please select one of 'mnist', 'cifar10', 'cifar100'")
-    elif args.dataset not in ['mnist', 'cifar10', 'cifar100']:
-        raise TypeError(f"the specific dataset {args.dataset} is not supported, "
-                        f"please select one of 'mnist', 'cifar10', 'cifar100'")
+        raise ValueError(f"the specific type of dataset to train on should be provided, "
+                            f"please select one of {DATASETS}")
+    elif args.dataset not in DATASETS:
+        raise ValueError(f"the provided dataset {args.dataset} is not supported, "
+                            f"please select one of {DATASETS}")
 
 
 if __name__ == '__main__':

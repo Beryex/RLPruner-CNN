@@ -179,7 +179,7 @@ def get_dataloader(dataset_name: str,
         return cifar100_train_loader, cifar100_val_loader, cifar100_test_loader, in_channels, num_class
     
     else:
-        return None, None, None, None, None
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
 
 
 def worker_init_fn(worker_id):

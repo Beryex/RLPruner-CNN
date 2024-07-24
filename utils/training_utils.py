@@ -33,17 +33,13 @@ def torch_resume_random_seed(prev_checkpoint: dict) -> None:
     torch.backends.cudnn.deterministic = True
 
 
-def setup_logging(experiment_id: int, 
+def setup_logging(log_dir: str,
+                  experiment_id: int, 
                   model_name: str, 
                   dataset_name: str,
                   action: str,
                   use_wandb: bool = False) -> None:
-    """ Set up wandb, logging """
-    if not os.path.exists("checkpoint"):
-        os.makedirs("checkpoint")
-    if not os.path.isdir("models"):
-        os.mkdir("models")
-    
+    """ Set up wandb, logging """    
     hyperparams_config = {
         "model": model_name,
         "dataset": dataset_name,
@@ -52,7 +48,7 @@ def setup_logging(experiment_id: int,
     }
     hyperparams_config.update(settings.__dict__)
     wandb.init(
-        project="AdaptivePruningForCNN",
+        project="RLPruner",
         name=f"{action}_{model_name}_on_{dataset_name}_{experiment_id}",
         id=str(experiment_id),
         config=hyperparams_config,
@@ -60,10 +56,6 @@ def setup_logging(experiment_id: int,
         mode='online' if use_wandb else 'disabled'
     )
 
-
-    log_dir = "log"
-    if not os.path.isdir(log_dir):
-        os.mkdir(log_dir)
     
     log_filename = f"{log_dir}/log_{action}_{model_name}_{dataset_name}_{experiment_id}.txt"
     logging.basicConfig(level=logging.INFO,
