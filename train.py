@@ -28,7 +28,8 @@ def main():
     setup_logging(experiment_id=experiment_id, 
                   model_name=args.model, 
                   dataset_name=args.dataset, 
-                  action='train')
+                  action='train',
+                  use_wandb=args.use_wandb)
 
     torch_set_random_seed(random_seed)
     logging.info(f'Start with random seed: {random_seed}')
@@ -67,9 +68,6 @@ def main():
 
             if epoch > args.warmup_epoch:
                 lr_scheduler.step()
-            
-            for param_group in optimizer.param_groups:
-                print('Current learning rate:', param_group['lr'])
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
@@ -141,12 +139,12 @@ def get_args():
                         help='the type of model to train')
     parser.add_argument('--dataset', '-ds', type=str, default=None, 
                         help='the dataset to train on')
-    parser.add_argument('--lr', type=float, default=settings.T_LR_SCHEDULAR_INITIAL_LR,
+    parser.add_argument('--lr', type=float, default=settings.T_LR_SCHEDULER_INITIAL_LR,
                         help='initial learning rate')
-    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
+    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
     parser.add_argument('--warmup-epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
-                        help='warmup epoch number for lr schedular')
+                        help='warmup epoch number for lr scheduler')
     parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
     parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
@@ -157,6 +155,8 @@ def get_args():
                         help='device to use')
     parser.add_argument('--random-seed', '-rs', type=int, default=None, 
                         help='the random seed for the current new compression')
+    parser.add_argument('--use-wandb', action='store_true', default=False, 
+                        help='use wandb to track the experiment')
 
     args = parser.parse_args()
     check_args(args)

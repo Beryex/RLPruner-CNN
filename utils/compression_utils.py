@@ -8,6 +8,9 @@ from conf import settings
 from utils import adjust_prune_distribution_for_cluster, CONV_LAYERS
 
 
+PRUNE_STRATEGY = ["variance", "l1", "l2"]
+
+
 class Prune_agent():
     """ Agent used to prune architecture and maintain prune_distribution """
     def __init__(self,
@@ -22,14 +25,21 @@ class Prune_agent():
         self.sample_num = sample_num
         self.modification_num = int(filter_num * prune_filter_ratio)
         self.layer_cluster_mask = layer_cluster_mask
-        self.noise_var = noise_var
+        self.max_noise_var = noise_var
         
         # Dynamic Data: These attributes may change during the object's lifetime
+        self.noise_var = noise_var
         self.prune_distribution = prune_distribution
         self.ReplayBuffer = ReplayBuffer
         self.model_info_list = [None] * sample_num
 
-    def step(self) -> None:
+
+    def step(self, rl_epoch: int, total_epoch: int) -> None:
+        """ adjust noise variance when generating architecture """
+        self.noise_var = self.max_noise_var
+    
+
+    def clear_cache(self) -> None:
         """ clear the ReplayBuffer and model_info_list if generated model is better """
         self.ReplayBuffer.zero_()
         self.model_info_list = [None] * self.sample_num
@@ -64,8 +74,9 @@ class Prune_agent():
 
 
     def prune_architecture(self,
-                            prunable_layers: List,
-                            next_layers: List) -> Tensor:
+                           prunable_layers: List,
+                           next_layers: List,
+                           prune_strategy: str) -> Tensor:
         """ Generate new noised PD and prune architecture based on noised PD """
         P_lower_bound = settings.RL_PROBABILITY_LOWER_BOUND
         prune_counter = torch.zeros(len(self.prune_distribution))
@@ -79,31 +90,60 @@ class Prune_agent():
 
         for target_layer_idx, count in enumerate(prune_counter):
             target_layer = prunable_layers[target_layer_idx]
-            for _ in range(count):
-                if isinstance(target_layer, CONV_LAYERS):
-                    prune_conv_filter(target_layer_idx, target_layer, next_layers, decred_layer)
-                elif isinstance(target_layer, (nn.Linear)):
-                    prune_linear_filter(target_layer_idx, target_layer, next_layers, decred_layer)
-        
+            if isinstance(target_layer, CONV_LAYERS):
+                if prune_strategy == "variance":
+                    weight_importance = torch.var(target_layer.weight.data, dim = [1, 2, 3])
+                elif prune_strategy == "l1":
+                    weight_importance = torch.sum(torch.abs(target_layer.weight.data), dim=[1, 2, 3])
+                elif prune_strategy == "l2":
+                    weight_importance = torch.sqrt(torch.sum(target_layer.weight.data ** 2, dim=[1, 2, 3]))
+                else:
+                    raise ValueError(f'Unsupported prune strategy: {prune_strategy}')
+                for _ in range(count):
+                    target_filter = torch.argmin(weight_importance).item()
+                    weight_importance = torch.cat((weight_importance[:target_filter], 
+                                                   weight_importance[target_filter + 1:]))
+                    prune_conv_filter(target_layer_idx, 
+                                        target_layer, 
+                                        target_filter, 
+                                        next_layers, 
+                                        decred_layer)
+            elif isinstance(target_layer, (nn.Linear)):
+                if prune_strategy == "variance":
+                    weight_importance = torch.var(target_layer.weight.data, dim = 1)
+                elif prune_strategy == "l1":
+                    weight_importance = torch.sum(torch.abs(target_layer.weight.data), dim=1)
+                elif prune_strategy == "l2":
+                    weight_importance = torch.sqrt(torch.sum(target_layer.weight.data ** 2, dim=1))
+                else:
+                    raise ValueError(f'Unsupported prune strategy: {prune_strategy}')
+                for _ in range(count):
+                    target_filter = torch.argmin(weight_importance).item()
+                    weight_importance = torch.cat((weight_importance[:target_filter], 
+                                                   weight_importance[target_filter + 1:]))
+                    prune_linear_filter(target_layer_idx, 
+                                        target_layer, 
+                                        target_filter, 
+                                        next_layers, 
+                                        decred_layer)
         return noised_PD
 
 
 def prune_conv_filter(target_layer_idx: int,
-                        target_layer: nn.Module, 
-                        next_layers: List,
-                        decred_layer: dict) -> None:
+                      target_layer: nn.Module, 
+                      target_filter: int,
+                      next_layers: List,
+                      decred_layer: dict) -> None:
     """ Prune one conv filter and decrease next layers' input dim """
     if target_layer.out_channels - 1 == 0:
         return
-    weight_variances = torch.var(target_layer.weight.data, dim = [1, 2, 3])
-    target_kernel = torch.argmin(weight_variances).item()
     with torch.no_grad():
-        target_layer.weight.data = torch.cat([target_layer.weight.data[:target_kernel], 
-                                              target_layer.weight.data[target_kernel+1:]], 
+        target_layer.weight.data = torch.cat([target_layer.weight.data[:target_filter], 
+                                              target_layer.weight.data[target_filter+1:]], 
                                               dim=0)
         if target_layer.bias is not None:
-            target_layer.bias.data = torch.cat([target_layer.bias.data[:target_kernel], 
-                                                target_layer.bias.data[target_kernel+1:]])
+            target_layer.bias.data = torch.cat([target_layer.bias.data[:target_filter], 
+                                                target_layer.bias.data[target_filter+1:]])
     target_layer.out_channels -= 1
     if target_layer.out_channels != target_layer.weight.shape[0]:
         raise ValueError(f'Conv2d layer out_channels {target_layer.out_channels} and '
@@ -125,7 +165,7 @@ def prune_conv_filter(target_layer_idx: int,
             target_bn = next_layer
             with torch.no_grad():
                 kept_indices = [i for i in range(target_bn.num_features) 
-                                if i != target_kernel + offset]
+                                if i != target_filter + offset]
                 target_bn.weight.data = target_bn.weight.data[kept_indices]
                 target_bn.bias.data = target_bn.bias.data[kept_indices]
                 target_bn.running_mean = target_bn.running_mean[kept_indices]
@@ -140,7 +180,7 @@ def prune_conv_filter(target_layer_idx: int,
             # case 2: Conv
             with torch.no_grad():
                 kept_indices = [i for i in range(next_layer.in_channels) 
-                                if i != target_kernel + offset]
+                                if i != target_filter + offset]
                 next_layer.weight.data = next_layer.weight.data[:, kept_indices, :, :]
             next_layer.in_channels -= 1
             decrease_offset(next_layers, next_layer, offset, 1)
@@ -151,7 +191,7 @@ def prune_conv_filter(target_layer_idx: int,
         elif isinstance(next_layer, (nn.Linear)):
             # case 3: Linear
             output_area = 1 # default for most CNNs
-            start_index = (target_kernel + offset) * output_area ** 2
+            start_index = (target_filter + offset) * output_area ** 2
             end_index = start_index + output_area ** 2
             with torch.no_grad():
                 next_layer.weight.data = torch.cat([next_layer.weight.data[:, :start_index], 
@@ -168,20 +208,19 @@ def prune_conv_filter(target_layer_idx: int,
 
 def prune_linear_filter(target_layer_idx: int,
                         target_layer: nn.Linear,
+                        target_filter: int,
                         next_layers: List, 
                         decred_layer: dict) -> None:
     """ Prune one linear filter and decrease next layers' input dim """
     if target_layer.out_features - 1 == 0:
         return
-    weight_variances = torch.var(target_layer.weight.data, dim = 1)
-    target_neuron = torch.argmin(weight_variances).item()
     with torch.no_grad():
-        target_layer.weight.data = torch.cat([target_layer.weight.data[:target_neuron], 
-                                              target_layer.weight.data[target_neuron+1:]], 
+        target_layer.weight.data = torch.cat([target_layer.weight.data[:target_filter], 
+                                              target_layer.weight.data[target_filter+1:]], 
                                               dim=0)
         if target_layer.bias is not None:
-            target_layer.bias.data = torch.cat([target_layer.bias.data[:target_neuron], 
-                                                target_layer.bias.data[target_neuron+1:]])
+            target_layer.bias.data = torch.cat([target_layer.bias.data[:target_filter], 
+                                                target_layer.bias.data[target_filter+1:]])
     target_layer.out_features -= 1
     if target_layer.out_features != target_layer.weight.shape[0]:
         raise ValueError(f'Linear layer out_channels {target_layer.out_features} and '
@@ -200,7 +239,7 @@ def prune_linear_filter(target_layer_idx: int,
         offset = max(next_layer_info[1], 0)
         if isinstance(next_layer, (nn.Linear)):
             # case 1: Linear
-            start_index = target_neuron + offset
+            start_index = target_filter + offset
             end_index = start_index + 1
             with torch.no_grad():
                 next_layer.weight.data = torch.cat([next_layer.weight.data[:, :start_index], 

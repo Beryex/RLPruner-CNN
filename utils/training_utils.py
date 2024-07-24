@@ -33,7 +33,11 @@ def torch_resume_random_seed(prev_checkpoint: dict) -> None:
     torch.backends.cudnn.deterministic = True
 
 
-def setup_logging(experiment_id: int, model_name: str, dataset_name: str, action: str) -> None:
+def setup_logging(experiment_id: int, 
+                  model_name: str, 
+                  dataset_name: str,
+                  action: str,
+                  use_wandb: bool = False) -> None:
     """ Set up wandb, logging """
     if not os.path.exists("checkpoint"):
         os.makedirs("checkpoint")
@@ -52,8 +56,10 @@ def setup_logging(experiment_id: int, model_name: str, dataset_name: str, action
         name=f"{action}_{model_name}_on_{dataset_name}_{experiment_id}",
         id=str(experiment_id),
         config=hyperparams_config,
-        resume=True
+        resume=True,
+        mode='online' if use_wandb else 'disabled'
     )
+
 
     log_dir = "log"
     if not os.path.isdir(log_dir):

@@ -16,7 +16,8 @@ import logging
 from conf import settings
 from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, 
                    adjust_prune_distribution_for_cluster, get_dataloader, setup_logging, 
-                   Prune_agent, torch_set_random_seed, torch_resume_random_seed, WarmUpLR)
+                   Prune_agent, torch_set_random_seed, torch_resume_random_seed, 
+                   WarmUpLR, DATASETS, PRUNE_STRATEGY)
 
 
 def main():
@@ -38,7 +39,7 @@ def main():
 
         model_name = prev_checkpoint['model_name']
         dataset_name = prev_checkpoint['dataset_name']
-        setup_logging(experiment_id, model_name, dataset_name, action='compress')
+        setup_logging(experiment_id, model_name, dataset_name, action='compress', use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
 
         model = torch.load(f'models/{experiment_id}_checkpoint.pth').to(device)
@@ -61,7 +62,7 @@ def main():
 
         model_name = args.model
         dataset_name = args.dataset
-        setup_logging(experiment_id, model_name, dataset_name, action='compress')
+        setup_logging(experiment_id, model_name, dataset_name, action='compress', use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
 
         model = torch.load(f'models/{model_name}_{dataset_name}_{args.model_id}_original.pth').to(device)
@@ -142,7 +143,7 @@ def main():
         for _ in range(prev_epoch):
             pbar.update(1)
 
-        for epoch in range(prev_epoch, args.epoch + 1):
+        for epoch in range(1, args.epoch + 1):
             """ get generated model """
             generated_model_with_info = generate_architecture(model_with_info, 
                                                               prune_agent, 
@@ -163,21 +164,21 @@ def main():
             
             best_acc = 0
             with tqdm(total=args.fine_tune_epoch, desc=f'Fine tuning', unit='epoch', leave=False) as pbar2:
-                for dev_epoch in range(1, args.fine_tune_epoch + 1):
+                for ft_epoch in range(1, args.fine_tune_epoch + 1):
                     train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
                                                     student_model=generated_model, 
                                                     optimizer=optimizer,
                                                     lr_scheduler_warmup=lr_scheduler_warmup,
                                                     soft_loss_weight=1-args.stu_co,
                                                     stu_loss_weight=args.stu_co,
-                                                    dev_epoch=dev_epoch)
+                                                    ft_epoch=ft_epoch)
                     top1_acc, top5_acc, _ = evaluate(generated_model)
-                    logging.info(f"epoch: {dev_epoch}/{args.fine_tune_epoch}, "
+                    logging.info(f"epoch: {ft_epoch}/{args.fine_tune_epoch}, "
                                 f"train_Loss: {train_loss}, "
                                 f"top1_acc: {top1_acc}, "
                                 f"top5_acc: {top5_acc}")
                     
-                    if dev_epoch > args.warmup_epoch:
+                    if ft_epoch > args.warmup_epoch:
                         lr_scheduler.step()
 
                     if best_acc < top1_acc:
@@ -185,8 +186,8 @@ def main():
                         model_with_info = copy.deepcopy(generated_model_with_info)
                 
                     pbar2.set_postfix({'train_loss': train_loss,
-                                    'Best_acc': best_acc, 
-                                    'cur_acc': top1_acc})
+                                       'Best_acc': best_acc, 
+                                       'cur_acc': top1_acc})
                     pbar2.update(1)
 
             
@@ -197,7 +198,7 @@ def main():
             FLOPs_compression_ratio = 1 - model_FLOPs / original_FLOPs_num
             Para_compression_ratio = 1 - model_Params / original_para_num
 
-            wandb.log({"top1_acc": top1_acc, 
+            wandb.log({"top1_acc": best_acc, 
                        "modification_num": prune_agent.modification_num, 
                        "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                        "Para_compression_ratio": Para_compression_ratio}, 
@@ -206,11 +207,12 @@ def main():
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
                         step=epoch)
             logging.info(f'Epoch: {epoch}/{args.epoch}, ' 
+                         f'top1_acc: {best_acc}, '
                          f'modification_num: {prune_agent.modification_num}, '
                          f'compression ratio: FLOPs: {FLOPs_compression_ratio}, '
                          f'Parameter number {Para_compression_ratio}')
             
-            prune_agent.step()
+            prune_agent.clear_cache()
 
             # save checkpoint
             checkpoint = {
@@ -273,12 +275,12 @@ def generate_architecture(original_model_with_info: Tuple,
     """ Generate architecture using RL """
     best_Q_value = 0
     with tqdm(total=args.lr_epoch, desc=f'Sampling', unit='epoch', leave=False) as pbar:
-        for _ in range(1, args.lr_epoch + 1):
+        for rl_epoch in range(1, args.lr_epoch + 1):
             Q_value_dict = {}
             sample_trajectory(0,
-                            original_model_with_info,
-                            prune_agent,
-                            Q_value_dict)
+                              original_model_with_info,
+                              prune_agent,
+                              Q_value_dict)
             cur_Q_value = torch.max(Q_value_dict[0]).item()
             logging.info(f'Generated model Q value List: {Q_value_dict[0]}')
             logging.info(f'Current new model Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
@@ -293,6 +295,9 @@ def generate_architecture(original_model_with_info: Tuple,
                                                                                   args.ppo)
                 logging.info(f"current prune probability distribution change: {prune_distribution_change}")
                 logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
+            
+            prune_agent.step(rl_epoch=rl_epoch, total_epoch=args.lr_epoch)
+
             pbar.set_postfix({'Best Q value': best_Q_value, 
                               'Q value': cur_Q_value})
             pbar.update(1)
@@ -325,7 +330,8 @@ def sample_trajectory(cur_step: int,
         generated_model_with_info = copy.deepcopy(original_model_with_info)
         generated_model, generated_prunable_layers, generated_next_layers = generated_model_with_info
         prune_distribution_action = prune_agent.prune_architecture(generated_prunable_layers, 
-                                                                    generated_next_layers)
+                                                                   generated_next_layers,
+                                                                   args.prune_strategy)
 
         # evaluate generated architecture
         top1_acc, _, _ = evaluate(generated_model)
@@ -352,10 +358,10 @@ def fine_tuning_with_KD(teacher_model: nn.Module,
                         student_model: nn.Module,
                         optimizer: optim.Optimizer, 
                         lr_scheduler_warmup: WarmUpLR,
+                        ft_epoch: int,
                         T: float = 2,
                         soft_loss_weight: float = 0.75, 
-                        stu_loss_weight: float = 0.25,
-                        dev_epoch: int = -1) -> float:
+                        stu_loss_weight: float = 0.25) -> float:
     """ fine tuning generated model with knowledge distillation with original model as teach """
     teacher_model.eval()
     student_model.train()
@@ -381,7 +387,7 @@ def fine_tuning_with_KD(teacher_model: nn.Module,
         optimizer.step()
         train_loss += loss.item()
 
-        if dev_epoch <= args.warmup_epoch:
+        if ft_epoch <= args.warmup_epoch:
             lr_scheduler_warmup.step()
 
     train_loss /= len(train_loader)
@@ -396,13 +402,15 @@ def get_args():
                         help='the id specific which model to be compressed')
     parser.add_argument('--dataset', '-ds', type=str, default=None, 
                         help='the dataset to train on')
+    parser.add_argument('--prune-strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
+                        help='strategy to evaluate unimportant weights')
     parser.add_argument('--prune-filter-ratio', '-pfr', default=settings.C_PRUNE_FILTER_RATIO,
                         help='what ratio of filter to prune for each pruning')
     parser.add_argument('--noise-var', '-nv', default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
                         help='variance when generating new prune distribution')
-    parser.add_argument('--lr_epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
+    parser.add_argument('--lr-epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
                         help='max epoch for reinforcement learning sampling epoch')
-    parser.add_argument('--sample_step', '-ss', default=settings.RL_MAX_SAMPLE_STEP, 
+    parser.add_argument('--sample-step', '-ss', default=settings.RL_MAX_SAMPLE_STEP, 
                         help='the sample step of prune distribution')
     parser.add_argument('--sample-num', '-sn', default=settings.RL_MAX_SAMPLE_NUM, 
                         help='the sample number of prune distribution')
@@ -416,20 +424,20 @@ def get_args():
                         help='enable Proximal Policy Optimization')
     parser.add_argument('--ppo-clip', '-ppoc', default=settings.RL_PPO_CLIP, 
                         help='the clip value for PPO')
-    parser.add_argument('--lr', type=float, default=settings.T_FT_LR_SCHEDULAR_INITIAL_LR,
+    parser.add_argument('--lr', type=float, default=settings.T_FT_LR_SCHEDULER_INITIAL_LR,
                         help='initial fine tuning learning rate')
-    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULAR_MIN_LR,
+    parser.add_argument('--min-lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
     parser.add_argument('--warmup-epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
-                        help='warmup epoch number for lr schedular')
-    parser.add_argument('--fine-tune_epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
+                        help='warmup epoch number for lr scheduler')
+    parser.add_argument('--fine-tune-epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
                         help='fine tuning epoch for generated model')
     parser.add_argument('--stu-co', '-sc', type=float, default=settings.T_FT_STU_CO,
                         help='the student loss coefficient in knowledge distillation')
     parser.add_argument('--batch-size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
     parser.add_argument('--num-worker', '-n', type=int, default=settings.T_NUM_WORKER, 
-                        help='num_workers for dataloader')
+                        help='num-workers for dataloader')
     parser.add_argument('--epoch', '-e', type=int, default=settings.C_COMPRESSION_EPOCH, 
                         help='total epoch to train')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
@@ -440,6 +448,8 @@ def get_args():
                         help='resume the previous target compression')
     parser.add_argument('--resume-id', type=int, default=None, 
                         help='the id specific previous compression that to be resumed')
+    parser.add_argument('--use-wandb', action='store_true', default=False, 
+                        help='use wandb to track the experiment')
 
     args = parser.parse_args()
     check_args(args)
@@ -449,16 +459,20 @@ def get_args():
 def check_args(args: argparse.Namespace):
     if args.resume == False:
         if args.model_id is None:
-            raise TypeError(f"the specific model {args.model_id} should be provided")
+            raise ValueError(f"the specific model {args.model_id} should be provided")
         if args.dataset is None:
-            raise TypeError(f"the specific type of dataset to train on should be provided, "
-                            f"please select one of 'mnist', 'cifar10', 'cifar100'")
-        elif args.dataset not in ['mnist', 'cifar10', 'cifar100']:
-            raise TypeError(f"the specific dataset {args.dataset} is not supported, "
-                            f"please select one of 'mnist', 'cifar10', 'cifar100'")
+            raise ValueError(f"the specific type of dataset to train on should be provided, "
+                             f"please select one of 'mnist', 'cifar10', 'cifar100'")
+        elif args.dataset not in DATASETS:
+            raise ValueError(f"the provided dataset {args.dataset} is not supported, "
+                             f"please select one of {DATASETS}")
     elif args.resume_id is None:
-        raise TypeError(f"the specific resume_id {args.resume_id} should be provided, "
-                        f"please specify which compression to resume")
+        raise ValueError(f"the specific resume_id {args.resume_id} should be provided, "
+                         f"please specify which compression to resume")
+    
+    if args.prune_strategy not in PRUNE_STRATEGY:
+        raise ValueError(f"the provided prune_strategy {args.prune_strategy} is not supported, "
+                         f"please select one of {PRUNE_STRATEGY}")
 
 
 if __name__ == '__main__':

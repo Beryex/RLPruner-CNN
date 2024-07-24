@@ -2,8 +2,13 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
 from typing import Tuple
+import numpy as np
 
 from conf import settings
+from utils import torch_set_random_seed
+
+
+DATASETS = ["mnist", "cifar10", "cifar100"]
 
 
 def get_dataloader(dataset_name: str, 
@@ -13,6 +18,9 @@ def get_dataloader(dataset_name: str,
                    pin_memory: bool = True,
                    shuffle: bool =True) -> Tuple[DataLoader, DataLoader, DataLoader, int, int]:
     """ Load and split dataset, also return dataset info for model building """
+    # this function use independent random seed because it is more manageable for controling
+    # reproduciable when resuming checkpoint
+    torch_set_random_seed(1)
     if dataset_name == 'mnist':
         in_channels = 1
         num_class = 10
@@ -41,7 +49,8 @@ def get_dataloader(dataset_name: str,
                                         shuffle=shuffle, 
                                         num_workers=num_workers, 
                                         batch_size=batch_size, 
-                                        pin_memory=pin_memory)
+                                        pin_memory=pin_memory,
+                                        worker_init_fn=worker_init_fn)
         if val_size == 0:
             mnist_val_loader = None
         else:
@@ -49,7 +58,8 @@ def get_dataloader(dataset_name: str,
                                           shuffle=shuffle, 
                                           num_workers=num_workers, 
                                           batch_size=batch_size, 
-                                          pin_memory=pin_memory)
+                                          pin_memory=pin_memory,
+                                          worker_init_fn=worker_init_fn)
         
         mnist_test = torchvision.datasets.MNIST(root='./data', 
                                                 train=False, 
@@ -59,7 +69,8 @@ def get_dataloader(dataset_name: str,
                                        shuffle=shuffle, 
                                        num_workers=num_workers, 
                                        batch_size=batch_size, 
-                                       pin_memory=pin_memory)
+                                       pin_memory=pin_memory,
+                                       worker_init_fn=worker_init_fn)
         
         return mnist_train_loader, mnist_val_loader, mnist_test_loader, in_channels, num_class
     
@@ -90,7 +101,8 @@ def get_dataloader(dataset_name: str,
                                           shuffle=shuffle, 
                                           num_workers=num_workers, 
                                           batch_size=batch_size, 
-                                          pin_memory=pin_memory)
+                                          pin_memory=pin_memory,
+                                          worker_init_fn=worker_init_fn)
         if val_size == 0:
             cifar10_val_loader = None
         else:
@@ -98,7 +110,8 @@ def get_dataloader(dataset_name: str,
                                             shuffle=shuffle, 
                                             num_workers=num_workers, 
                                             batch_size=batch_size, 
-                                            pin_memory=pin_memory)
+                                            pin_memory=pin_memory,
+                                            worker_init_fn=worker_init_fn)
 
         cifar10_test = torchvision.datasets.CIFAR10(root='./data', 
                                                     train=False, 
@@ -108,7 +121,8 @@ def get_dataloader(dataset_name: str,
                                          shuffle=shuffle, 
                                          num_workers=num_workers, 
                                          batch_size=batch_size, 
-                                         pin_memory=pin_memory)
+                                         pin_memory=pin_memory,
+                                         worker_init_fn=worker_init_fn)
     
         return cifar10_train_loader, cifar10_val_loader, cifar10_test_loader, in_channels, num_class
     
@@ -139,7 +153,8 @@ def get_dataloader(dataset_name: str,
                                            shuffle=shuffle, 
                                            num_workers=num_workers, 
                                            batch_size=batch_size, 
-                                           pin_memory=pin_memory)
+                                           pin_memory=pin_memory,
+                                           worker_init_fn=worker_init_fn)
         if val_size == 0:
             cifar100_val_loader = None
         else:
@@ -147,7 +162,8 @@ def get_dataloader(dataset_name: str,
                                              shuffle=shuffle, 
                                              num_workers=num_workers, 
                                              batch_size=batch_size, 
-                                             pin_memory=pin_memory)
+                                             pin_memory=pin_memory,
+                                             worker_init_fn=worker_init_fn)
 
         cifar100_test = torchvision.datasets.CIFAR100(root='./data', 
                                                       train=False, 
@@ -157,9 +173,14 @@ def get_dataloader(dataset_name: str,
                                           shuffle=shuffle, 
                                           num_workers=num_workers, 
                                           batch_size=batch_size, 
-                                          pin_memory=pin_memory)
+                                          pin_memory=pin_memory,
+                                          worker_init_fn=worker_init_fn)
 
         return cifar100_train_loader, cifar100_val_loader, cifar100_test_loader, in_channels, num_class
     
     else:
         return None, None, None, None, None
+
+
+def worker_init_fn(worker_id):
+    np.random.seed(1 + worker_id)
