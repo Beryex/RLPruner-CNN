@@ -1,3 +1,13 @@
+"""
+Implementation of the VGG model, inspired by the architecture proposed in:
+Olaf Ronneberger, Philipp Fischer, Thomas Brox, "U-Net: Convolutional Networks for Biomedical Image Segmentation"
+Paper: https://arxiv.org/abs/1505.04597
+
+This implementation is based on the PyTorch replication available at:
+https://github.com/milesial/Pytorch-UNet/tree/master
+"""
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

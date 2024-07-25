@@ -37,6 +37,7 @@ CUDA_VISIBLE_DEVICES=0 python -m train --model $MODEL --dataset $DATASET --devic
                                        --model_dir $MODEL_DIR --output $PRETRAINED_MODEL_DIR \
                                        --log_dir $LOG --use_wandb
 
+
 # Step 2: Compress trained model
 CUDA_VISIBLE_DEVICES=0 python -m compress --model $MODEL --dataset $DATASET --device cuda \
                                           --sparsity 0.95 --greedy_epsilon 0 --ppo \

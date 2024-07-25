@@ -245,6 +245,8 @@ def main():
                 'torch_random_state': torch.get_rng_state(),
                 'cuda_random_state': torch.cuda.get_rng_state_all()
             }
+            if not os.path.exists(f"{checkpoint_path}/{epoch}"):
+                os.makedirs(f"{checkpoint_path}/{epoch}")
             torch.save(checkpoint, f"{checkpoint_path}/{epoch}/checkpoint.pt")
             torch.save(model_with_info[0], f"{checkpoint_path}/{epoch}/model.pth")
 
