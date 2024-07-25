@@ -5,3 +5,8 @@
 **/__pycache__/
 **/data/
 **/wandb/
+**/log/
+**/checkpoint/
+**/compressed_model/
+**/pretrained_model/
+

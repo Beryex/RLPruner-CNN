@@ -2,7 +2,6 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 
-from utils import Prune_agent
 
 class LeNet5(nn.Module):
     def __init__(self, in_channels: int=1, num_class: int=10):

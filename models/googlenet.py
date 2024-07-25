@@ -1,8 +1,17 @@
+"""
+Implementation of the GoogleNet model, inspired by the architecture proposed in:
+Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed, "Going Deeper with Convolutions."
+Paper: https://arxiv.org/abs/1409.4842v1
+
+This implementation is based on the PyTorch replication available at:
+https://github.com/weiaicunzai/pytorch-cifar100/
+"""
+
+
 import torch
 from torch import Tensor
 import torch.nn as nn
 
-from utils import Prune_agent
 
 class Inception(nn.Module):
     def __init__(self, input_channels: int, n1x1: int, n3x3_reduce: int, n3x3: int, n5x5_reduce: int, n5x5: int, pool_proj: int):
