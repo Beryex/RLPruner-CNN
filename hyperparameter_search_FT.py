@@ -81,11 +81,14 @@ def main():
     global eval_loader
     global device
     global loss_function
-    setup_logging(experiment_id=int(time.time()), 
-                model_name='vgg16', 
-                dataset_name='cifar100', 
-                action='test',
-                use_wandb=True)
+    random_seed = 1
+    setup_logging(log_dir='log',
+                  experiment_id=int(time.time()), 
+                  random_seed=random_seed,
+                  model_name='vgg16', 
+                  dataset_name='cifar100', 
+                  action='test',
+                  use_wandb=True)
     
     train_loader, valid_loader, test_loader, _, _ = get_dataloader('cifar100', 
                                                                 batch_size=256, 
@@ -98,7 +101,7 @@ def main():
     min_lr = 1e-6
     for initial_lr in [5e-3]:
         for stu_co in np.arange(0, 0.9, 0.1):
-            torch_set_random_seed(1)
+            torch_set_random_seed(random_seed)
             teacher_model = torch.load("models/vgg16_cifar100_1721705939_original.pth")
             generated_model = torch.load("models/test.pth")
             logging.info(f'\n')

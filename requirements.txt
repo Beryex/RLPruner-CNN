@@ -24,10 +24,14 @@ nvidia-cusparse-cu12==12.1.0.106
 nvidia-nccl-cu12==2.20.5
 nvidia-nvjitlink-cu12==12.5.82
 nvidia-nvtx-cu12==12.1.105
+pandas==2.2.2
 pillow==10.4.0
 platformdirs==4.2.2
+prettytable==3.10.2
 protobuf==5.27.2
 psutil==6.0.0
+python-dateutil==2.9.0.post0
+pytz==2024.1
 PyYAML==6.0.1
 requests==2.32.3
 sentry-sdk==2.10.0
@@ -41,5 +45,7 @@ torchvision==0.18.1
 tqdm==4.66.4
 triton==2.3.1
 typing_extensions==4.12.2
+tzdata==2024.1
 urllib3==2.2.2
 wandb==0.17.5
+wcwidth==0.2.13

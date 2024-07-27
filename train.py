@@ -19,7 +19,6 @@ def main():
     global args
     global epoch
     args = get_args()
-    output_path = f"{args.output}/{args.model}_{args.dataset}_original.pth"
 
     if args.random_seed is not None:
         random_seed = args.random_seed
@@ -30,6 +29,8 @@ def main():
     device = args.device
     setup_logging(log_dir=args.log_dir,
                   experiment_id=experiment_id, 
+                  random_seed=random_seed,
+                  args=args,
                   model_name=args.model, 
                   dataset_name=args.dataset, 
                   action='train',
@@ -75,7 +76,7 @@ def main():
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
-                torch.save(model, f"{output_path}")
+                torch.save(model, args.output_pth)
             
             pbar.set_postfix({'Train loss': train_loss, 'Top1 acc': top1_acc})
             pbar.update(1)
@@ -166,8 +167,8 @@ def get_args():
                         help='the directory containing logging text')
     parser.add_argument('--model_dir', '-mdir', type=str, default='models', 
                         help='the directory containing model scripts')
-    parser.add_argument('--output', '-o', type=str, default='pretrained_model', 
-                        help='the directory to store output model')
+    parser.add_argument('--output_pth', '-opth', type=str, default='pretrained_model', 
+                        help='the path to store output model')
 
     args = parser.parse_args()
     check_args(args)

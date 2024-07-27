@@ -1,14 +1,14 @@
 import torch
 from torch import Tensor
-from typing import List
-import math
+from typing import Tuple, List
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from conf import settings
 from utils import adjust_prune_distribution_for_cluster, CONV_LAYERS
 
 
-PRUNE_STRATEGY = ["variance", "l1", "l2"]
+PRUNE_STRATEGY = ["variance", "l1", "l2", "activation"]
 
 
 class Prune_agent():
@@ -25,19 +25,13 @@ class Prune_agent():
         self.sample_num = sample_num
         self.modification_num = int(filter_num * prune_filter_ratio)
         self.layer_cluster_mask = layer_cluster_mask
-        self.max_noise_var = noise_var
+        self.noise_var = noise_var
         
         # Dynamic Data: These attributes may change during the object's lifetime
-        self.noise_var = noise_var
         self.prune_distribution = prune_distribution
         self.ReplayBuffer = ReplayBuffer
         self.model_info_list = [None] * sample_num
 
-
-    def step(self, rl_epoch: int, total_epoch: int) -> None:
-        """ adjust noise variance when generating architecture """
-        self.noise_var = self.max_noise_var
-    
 
     def clear_cache(self) -> None:
         """ clear the ReplayBuffer and model_info_list if generated model is better """
@@ -74,12 +68,14 @@ class Prune_agent():
 
 
     def prune_architecture(self,
+                           model: nn.Module,
+                           eval_loader: DataLoader,
                            prunable_layers: List,
                            next_layers: List,
                            prune_strategy: str) -> Tensor:
         """ Generate new noised PD and prune architecture based on noised PD """
         P_lower_bound = settings.RL_PROBABILITY_LOWER_BOUND
-        prune_counter = torch.zeros(len(self.prune_distribution))
+        prune_counter = torch.zeros(len(prunable_layers))
         noise = torch.randn(len(self.prune_distribution)) * self.noise_var * torch.rand(1).item()
         noised_PD = self.prune_distribution + noise
         noised_PD = torch.clamp(noised_PD, min=P_lower_bound)
@@ -88,49 +84,103 @@ class Prune_agent():
         prune_counter = torch.round(noised_PD * self.modification_num).int().tolist()
         decred_layer = {}
 
+        """ Get each filter's importance """
+        if "activation" == prune_strategy:
+            all_layer_filter_importance = get_filter_importance_activation(model,
+                                                                           prunable_layers,
+                                                                           eval_loader)
+        else:
+            all_layer_filter_importance = get_filter_importance_weight(prunable_layers,
+                                                                       prune_strategy)
+        """ Prune each layer's filter based on importance """
         for target_layer_idx, count in enumerate(prune_counter):
             target_layer = prunable_layers[target_layer_idx]
-            if isinstance(target_layer, CONV_LAYERS):
-                if target_layer.out_channels - 1 == 0:
-                    continue
-                if prune_strategy == "variance":
-                    weight_importance = torch.var(target_layer.weight.data, dim = [1, 2, 3])
-                elif prune_strategy == "l1":
-                    weight_importance = torch.sum(torch.abs(target_layer.weight.data), dim=[1, 2, 3])
-                elif prune_strategy == "l2":
-                    weight_importance = torch.sqrt(torch.sum(target_layer.weight.data ** 2, dim=[1, 2, 3]))
-                else:
-                    raise ValueError(f'Unsupported prune strategy: {prune_strategy}')
-                for _ in range(count):
-                    target_filter = torch.argmin(weight_importance).item()
-                    weight_importance = torch.cat((weight_importance[:target_filter], 
-                                                   weight_importance[target_filter + 1:]))
+            filter_importance = all_layer_filter_importance[target_layer_idx]
+            for _ in range(count):
+                target_filter = torch.argmin(filter_importance).item()
+                filter_importance = torch.cat((filter_importance[:target_filter], 
+                                                filter_importance[target_filter + 1:]))
+                if isinstance(target_layer, CONV_LAYERS):
                     prune_conv_filter(target_layer_idx, 
-                                        target_layer, 
-                                        target_filter, 
-                                        next_layers, 
-                                        decred_layer)
-            elif isinstance(target_layer, (nn.Linear)):
-                if target_layer.out_features - 1 == 0:
-                    return
-                if prune_strategy == "variance":
-                    weight_importance = torch.var(target_layer.weight.data, dim = 1)
-                elif prune_strategy == "l1":
-                    weight_importance = torch.sum(torch.abs(target_layer.weight.data), dim=1)
-                elif prune_strategy == "l2":
-                    weight_importance = torch.sqrt(torch.sum(target_layer.weight.data ** 2, dim=1))
-                else:
-                    raise ValueError(f'Unsupported prune strategy: {prune_strategy}')
-                for _ in range(count):
-                    target_filter = torch.argmin(weight_importance).item()
-                    weight_importance = torch.cat((weight_importance[:target_filter], 
-                                                   weight_importance[target_filter + 1:]))
+                                      target_layer, 
+                                      target_filter, 
+                                      next_layers, 
+                                      decred_layer)
+                    if target_layer.out_channels - 1 == 0:
+                        break
+                elif isinstance(target_layer, (nn.Linear)):
                     prune_linear_filter(target_layer_idx, 
                                         target_layer, 
                                         target_filter, 
                                         next_layers, 
                                         decred_layer)
+                    if target_layer.out_features - 1 == 0:
+                        break
+
         return noised_PD
+
+@torch.no_grad()
+def get_filter_importance_activation(model: nn.Module,
+                                     prunable_layers: List, 
+                                     eval_loader: DataLoader) -> List:
+    """ Compute the importance score of all filters based on its activation """
+    all_layer_filter_importance = []
+    handles = []
+    get_layer_outputs = {}
+
+    def forward_hook(layer: nn.Module, input: Tuple, output: Tensor) -> None:
+        """ Track each layer's output """
+        if layer in prunable_layers:
+            if layer in get_layer_outputs:
+                get_layer_outputs[layer] += output.sum(dim=0)
+            else:
+                get_layer_outputs[layer] = output.sum(dim=0)
+
+    for layer in prunable_layers:
+        handle = layer.register_forward_hook(forward_hook)
+        handles.append(handle)
+    
+    device = next(model.parameters()).device
+    model.eval()
+    for images, _ in eval_loader:
+        images = images.to(device)
+        model(images)
+
+    for handle in handles:
+        handle.remove()
+    
+    for target_layer in prunable_layers:
+        if isinstance(target_layer, CONV_LAYERS):
+            all_layer_filter_importance.append(torch.sum(get_layer_outputs[target_layer] ** 2, dim = [1, 2]))
+        elif isinstance(target_layer, (nn.Linear)):
+            all_layer_filter_importance.append(get_layer_outputs[target_layer])
+        
+    return all_layer_filter_importance
+
+
+def get_filter_importance_weight(prunable_layers: List,
+                                 prune_strategy: str) -> List:
+    """ Compute the importance score of all filters based on weights """
+    all_layer_filter_importance = []
+    for target_layer in prunable_layers:
+        if prune_strategy == "variance":
+            if isinstance(target_layer, CONV_LAYERS):
+                all_layer_filter_importance.append(torch.var(target_layer.weight.data, dim = [1, 2, 3]))
+            elif isinstance(target_layer, (nn.Linear)):
+                all_layer_filter_importance.append(torch.var(target_layer.weight.data, dim = 1))
+        elif prune_strategy == "l1":
+            if isinstance(target_layer, CONV_LAYERS):
+                all_layer_filter_importance.append(torch.sum(torch.abs(target_layer.weight.data), dim = [1, 2, 3]))
+            elif isinstance(target_layer, (nn.Linear)):
+                all_layer_filter_importance.append(torch.sum(torch.abs(target_layer.weight.data), dim = 1))
+        elif prune_strategy == "l2":
+            if isinstance(target_layer, CONV_LAYERS):
+                all_layer_filter_importance.append(torch.sum(target_layer.weight.data ** 2, dim = [1, 2, 3]))
+            elif isinstance(target_layer, (nn.Linear)):
+                all_layer_filter_importance.append(torch.sum(target_layer.weight.data ** 2, dim = 1))
+        else:
+            raise ValueError(f'Unsupported prune strategy: {prune_strategy}')
+    return all_layer_filter_importance
 
 
 def prune_conv_filter(target_layer_idx: int,

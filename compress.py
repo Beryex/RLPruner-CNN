@@ -30,13 +30,10 @@ def main():
     device = args.device
     model_name = args.model
     dataset_name = args.dataset
-    checkpoint_path = f"{args.checkpoint_dir}/{model_name}_{dataset_name}"
-    pretrained_path = f"{args.pretrained_dir}/{model_name}_{dataset_name}_original.pth"
-    compressed_path = f"{args.compressed_dir}/{model_name}_{dataset_name}_compressed.pth"
 
     """ Setup logging and get model, data loader, loss function """
     if args.resume:
-        prev_checkpoint = torch.load(f"{checkpoint_path}/{args.resume_epoch}/checkpoint.pt")
+        prev_checkpoint = torch.load(f"{args.checkpoint_dir}/{args.resume_epoch}/checkpoint.pt")
         
         random_seed = prev_checkpoint['random_seed']
         experiment_id = prev_checkpoint['experiment_id']
@@ -44,14 +41,16 @@ def main():
 
         setup_logging(log_dir=args.log_dir,
                       experiment_id=experiment_id, 
+                      random_seed=random_seed,
+                      args=args,
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
                       use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
 
-        model = torch.load(f"{checkpoint_path}/{args.resume_epoch}/model.pth").to(device)
-        teacher_model = torch.load(f"{pretrained_path}").to(device)
+        model = torch.load(f"{args.checkpoint_dir}/{args.resume_epoch}/model.pth").to(device)
+        teacher_model = torch.load(f"{args.pretrained_pth}").to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
                                                                        batch_size=args.batch_size, 
                                                                        num_workers=args.num_worker)
@@ -69,13 +68,15 @@ def main():
 
         setup_logging(log_dir=args.log_dir,
                       experiment_id=experiment_id, 
+                      random_seed=random_seed,
+                      args=args,
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
                       use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
 
-        model = torch.load(f"{pretrained_path}").to(device)
+        model = torch.load(f"{args.pretrained_pth}").to(device)
         teacher_model = copy.deepcopy(model).to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
                                                                        batch_size=args.batch_size, 
@@ -226,37 +227,38 @@ def main():
             
             prune_agent.clear_cache()
 
-            # save checkpoint
-            checkpoint = {
-                # compression parameter
-                'experiment_id': experiment_id,
-                'epoch': epoch,
-                'prune_agent': prune_agent,
-                'original_para_num': original_para_num,
-                'original_FLOPs_num': original_FLOPs_num,
-                'Para_compression_ratio': Para_compression_ratio,
-                'FLOPs_compression_ratio': FLOPs_compression_ratio,
-
-                # random seed parameter
-                'random_seed': random_seed,
-                'python_hash_seed': os.environ['PYTHONHASHSEED'],
-                'random_state': random.getstate(),
-                'np_random_state': np.random.get_state(),
-                'torch_random_state': torch.get_rng_state(),
-                'cuda_random_state': torch.cuda.get_rng_state_all()
-            }
-            if not os.path.exists(f"{checkpoint_path}/{epoch}"):
-                os.makedirs(f"{checkpoint_path}/{epoch}")
-            torch.save(checkpoint, f"{checkpoint_path}/{epoch}/checkpoint.pt")
-            torch.save(model_with_info[0], f"{checkpoint_path}/{epoch}/model.pth")
-
             pbar.set_postfix({'Para': Para_compression_ratio, 
-                              'FLOPs': FLOPs_compression_ratio, 
-                              'Q_value': best_Q_value,
-                              'Top1_acc': best_acc})
+                                'FLOPs': FLOPs_compression_ratio, 
+                                'Q_value': best_Q_value,
+                                'Top1_acc': best_acc})
             pbar.update(1)
+
+            # save checkpoint
+            if epoch % 10 == 0:
+                checkpoint = {
+                    # compression parameter
+                    'experiment_id': experiment_id,
+                    'epoch': epoch,
+                    'prune_agent': prune_agent,
+                    'original_para_num': original_para_num,
+                    'original_FLOPs_num': original_FLOPs_num,
+                    'Para_compression_ratio': Para_compression_ratio,
+                    'FLOPs_compression_ratio': FLOPs_compression_ratio,
+
+                    # random seed parameter
+                    'random_seed': random_seed,
+                    'python_hash_seed': os.environ['PYTHONHASHSEED'],
+                    'random_state': random.getstate(),
+                    'np_random_state': np.random.get_state(),
+                    'torch_random_state': torch.get_rng_state(),
+                    'cuda_random_state': torch.cuda.get_rng_state_all()
+                }
+                if not os.path.exists(f"{args.checkpoint_dir}/{epoch}"):
+                    os.makedirs(f"{args.checkpoint_dir}/{epoch}")
+                torch.save(checkpoint, f"{args.checkpoint_dir}/{epoch}/checkpoint.pt")
+                torch.save(model_with_info[0], f"{args.checkpoint_dir}/{epoch}/model.pth")
         
-        torch.save(model_with_info[0], f"{compressed_path}")
+        torch.save(model_with_info[0], f"{args.compressed_pth}")
 
 
 @torch.no_grad()
@@ -308,8 +310,6 @@ def generate_architecture(original_model_with_info: Tuple,
                                                                                   args.ppo)
                 logging.info(f"current prune probability distribution change: {prune_distribution_change}")
                 logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
-            
-            prune_agent.step(rl_epoch=rl_epoch, total_epoch=args.lr_epoch)
 
             pbar.set_postfix({'Best Q value': best_Q_value, 
                               'Q value': cur_Q_value})
@@ -341,7 +341,9 @@ def sample_trajectory(cur_step: int,
     for model_id in range(cur_generate_num):
         generated_model_with_info = copy.deepcopy(original_model_with_info)
         generated_model, generated_prunable_layers, generated_next_layers = generated_model_with_info
-        prune_distribution_action = prune_agent.prune_architecture(generated_prunable_layers, 
+        prune_distribution_action = prune_agent.prune_architecture(generated_model,
+                                                                   eval_loader,
+                                                                   generated_prunable_layers, 
                                                                    generated_next_layers,
                                                                    args.prune_strategy)
 
@@ -463,12 +465,12 @@ def get_args():
     
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')
-    parser.add_argument('--checkpoint_dir', '-ckpt', type=str, default='checkpoint', 
+    parser.add_argument('--checkpoint_dir', '-ckptdir', type=str, default='checkpoint', 
                         help='the directory containing checkpoints')
-    parser.add_argument('--pretrained_dir', '-pdir', type=str, default='pretrained_model', 
-                        help='the directory containing pretrained model')
-    parser.add_argument('--compressed_dir', '-cdir', type=str, default='compressed_model', 
-                        help='the directory containing compressed model')
+    parser.add_argument('--pretrained_pth', '-ppth', type=str, default='pretrained_model', 
+                        help='the path of pretrained model')
+    parser.add_argument('--compressed_pth', '-cpth', type=str, default='compressed_model', 
+                        help='the path of compressed model')
 
     args = parser.parse_args()
     check_args(args)

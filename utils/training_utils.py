@@ -4,7 +4,7 @@ import random
 import numpy as np
 import wandb
 import logging
-from torch import Tensor
+import argparse
 from torch.optim.lr_scheduler import _LRScheduler
 
 from conf import settings
@@ -35,6 +35,8 @@ def torch_resume_random_seed(prev_checkpoint: dict) -> None:
 
 def setup_logging(log_dir: str,
                   experiment_id: int, 
+                  random_seed: int,
+                  args: argparse.Namespace,
                   model_name: str, 
                   dataset_name: str,
                   action: str,
@@ -44,8 +46,9 @@ def setup_logging(log_dir: str,
         "model": model_name,
         "dataset": dataset_name,
         "action": action, 
-        "random_seed": experiment_id
+        "random_seed": random_seed
     }
+    hyperparams_config.update(vars(args))
     hyperparams_config.update(settings.__dict__)
     wandb.init(
         project="RLPruner",
@@ -75,35 +78,3 @@ class WarmUpLR(_LRScheduler):
     def get_lr(self):
         """ Fpr first m batches, and set the learning rate to base_lr * m / total_iters """
         return [base_lr * self.last_epoch / (self.total_iters + 1e-8) for base_lr in self.base_lrs]
-
-
-def dice_coeff(input: Tensor, 
-               target: Tensor, 
-               reduce_batch_first: bool = False, 
-               epsilon: float = 1e-6):
-    # Average of Dice coefficient for all batches, or for a single mask
-    assert input.size() == target.size()
-    assert input.dim() == 3 or not reduce_batch_first
-
-    sum_dim = (-1, -2) if input.dim() == 2 or not reduce_batch_first else (-1, -2, -3)
-
-    inter = 2 * (input * target).sum(dim=sum_dim)
-    sets_sum = input.sum(dim=sum_dim) + target.sum(dim=sum_dim)
-    sets_sum = torch.where(sets_sum == 0, inter, sets_sum)
-
-    dice = (inter + epsilon) / (sets_sum + epsilon)
-    return dice.mean()
-
-def multiclass_dice_coeff(input: Tensor, 
-                          target: Tensor, 
-                          reduce_batch_first: bool = False, 
-                          epsilon: float = 1e-6):
-    # Average of Dice coefficient for all classes
-    return dice_coeff(input.flatten(0, 1), target.flatten(0, 1), reduce_batch_first, epsilon)
-
-def dice_loss(input: Tensor, 
-              target: Tensor, 
-              multiclass: bool = False):
-    # Dice loss (objective to minimize) between 0 and 1
-    fn = multiclass_dice_coeff if multiclass else dice_coeff
-    return 1 - fn(input, target, reduce_batch_first=True)

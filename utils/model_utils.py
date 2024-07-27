@@ -3,12 +3,6 @@ from torch import nn, Tensor
 from typing import Tuple, List
 import queue
 
-from models.lenet import LeNet5
-from models.vgg import VGG16
-from models.googlenet import GoogleNet
-from models.resnet import ResNet50
-from models.unet import UNet
-
 
 # Define layer types for pruning and normalization
 PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, 
@@ -27,12 +21,12 @@ TENSOR_DIFFERENCE_THRESHOLD = 1e-4
 
 def get_model(model_name: str, in_channels: int, num_class: int) -> nn.Module:
     """ Retrieve a specific network model based on the given specifications """
-    if model_name == 'vgg16':
-        from models.vgg import VGG16
-        return VGG16(in_channels, num_class)
-    elif model_name == 'lenet5':
+    if model_name == 'lenet5':
         from models.lenet import LeNet5
         return LeNet5(in_channels, num_class)
+    elif model_name == 'vgg16':
+        from models.vgg import VGG16
+        return VGG16(in_channels, num_class)
     elif model_name == 'googlenet':
         from models.googlenet import GoogleNet
         return GoogleNet(in_channels, num_class)
@@ -75,7 +69,7 @@ def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
     
     return torch.tensor(filter_distribution), total_output_dim, prunable_layers
 
-
+@torch.no_grad()
 def extract_prunable_layer_dependence(model: nn.Module, 
                                       x: Tensor,
                                       prunable_layers: List) -> Tuple[List, List]:

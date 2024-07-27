@@ -1,5 +1,5 @@
 """
-Implementation of the VGG model, inspired by the architecture proposed in:
+Implementation of the UNet model, inspired by the architecture proposed in:
 Olaf Ronneberger, Philipp Fischer, Thomas Brox, "U-Net: Convolutional Networks for Biomedical Image Segmentation"
 Paper: https://arxiv.org/abs/1505.04597
 
