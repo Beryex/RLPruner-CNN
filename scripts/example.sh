@@ -1,7 +1,7 @@
 #!/bin/bash
 
-MODEL=lenet5
-DATASET=cifar10
+MODEL=googlenet
+DATASET=cifar100
 
 SPARSITY=0.5
 
@@ -41,7 +41,7 @@ fi
 CUDA_VISIBLE_DEVICES=0 python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
                                        --model_dir ${MODEL_DIR} --output_pth ${PRETRAINED_MODEL_PTH} \
                                        --log_dir ${LOG} --use_wandb
-
+'
 
 # Step 2: Compress trained model
 CUDA_VISIBLE_DEVICES=0 python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
@@ -51,9 +51,9 @@ CUDA_VISIBLE_DEVICES=0 python -m compress --model ${MODEL} --dataset ${DATASET} 
                                           --pretrained_pth ${PRETRAINED_MODEL_PTH} \
                                           --compressed_pth ${COMPRESSED_MODEL_PTH} \
                                           --checkpoint_dir ${CKPT_DIR} \
-                                          --log_dir ${LOG} --use_wandb
+                                          --log_dir ${LOG} 
 
-'
+
 # Step 3: Evaluate the compression results
 CUDA_VISIBLE_DEVICES=0 python -m evaluate --model ${MODEL} --dataset ${DATASET} --device cuda \
                                           --pretrained_pth ${PRETRAINED_MODEL_PTH} \

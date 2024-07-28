@@ -51,7 +51,6 @@ class Prune_agent():
         
         updated_PD = original_PD + step_length * (optimal_PD - original_PD) 
         updated_PD = torch.clamp(updated_PD, min=P_lower_bound)
-        updated_PD /= torch.sum(updated_PD)
         updated_PD = adjust_prune_distribution_for_cluster(updated_PD, 
                                                            self.layer_cluster_mask)
         
@@ -60,7 +59,6 @@ class Prune_agent():
             ratio = updated_PD / original_PD
             updated_PD = torch.clamp(ratio, 1 - ppo_clip, 1 + ppo_clip) * original_PD
             updated_PD = torch.clamp(updated_PD, min=P_lower_bound)
-            updated_PD /= torch.sum(updated_PD)
             updated_PD = adjust_prune_distribution_for_cluster(updated_PD, 
                                                                self.layer_cluster_mask)
         self.prune_distribution = updated_PD
@@ -97,25 +95,27 @@ class Prune_agent():
             target_layer = prunable_layers[target_layer_idx]
             filter_importance = all_layer_filter_importance[target_layer_idx]
             for _ in range(count):
-                target_filter = torch.argmin(filter_importance).item()
-                filter_importance = torch.cat((filter_importance[:target_filter], 
-                                                filter_importance[target_filter + 1:]))
-                if isinstance(target_layer, CONV_LAYERS):
-                    prune_conv_filter(target_layer_idx, 
-                                      target_layer, 
-                                      target_filter, 
-                                      next_layers, 
-                                      decred_layer)
-                    if target_layer.out_channels - 1 == 0:
-                        break
-                elif isinstance(target_layer, (nn.Linear)):
-                    prune_linear_filter(target_layer_idx, 
+                if len(filter_importance) > 1:
+                    target_filter = torch.argmin(filter_importance).item()
+                    filter_importance = torch.cat((filter_importance[:target_filter], 
+                                                    filter_importance[target_filter + 1:]))
+                    if isinstance(target_layer, CONV_LAYERS):
+                        prune_conv_filter(target_layer_idx, 
                                         target_layer, 
                                         target_filter, 
                                         next_layers, 
                                         decred_layer)
-                    if target_layer.out_features - 1 == 0:
-                        break
+                    elif isinstance(target_layer, (nn.Linear)):
+                        prune_linear_filter(target_layer_idx, 
+                                            target_layer, 
+                                            target_filter, 
+                                            next_layers, 
+                                            decred_layer)
+                else:
+                    self.prune_distribution[target_layer_idx] = 0
+                    self.prune_distribution = adjust_prune_distribution_for_cluster(self.prune_distribution,
+                                                                                    self.layer_cluster_mask)
+                    continue
 
         return noised_PD
 

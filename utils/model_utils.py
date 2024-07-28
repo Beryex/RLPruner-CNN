@@ -124,11 +124,12 @@ def extract_prunable_layer_dependence(model: nn.Module,
                     torch.allclose(tensor1, tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD)):
                 raise ValueError(f'{layer1} and {layer2} has the same value output')
     
-    """ handle special layer """
+    """ link special layer """
     for output_layer, output_tensor in get_layer_output_tensor.items():
         for input_layer, input_tensor in get_layer_input_tensor.items():
-            if (id(output_tensor) in get_tensor_recipients 
-                    and input_layer in get_tensor_recipients[id(output_tensor)]):
+            if (((id(output_tensor) in get_tensor_recipients 
+                    and input_layer in get_tensor_recipients[id(output_tensor)]))
+                    or isinstance(input_layer, NORM_LAYERS)):       # assume input layer is never norm type
                 continue
             if (isinstance (input_layer, nn.Linear) 
                     and check_tensor_use_view(output_tensor, input_tensor)):
@@ -159,7 +160,7 @@ def extract_prunable_layer_dependence(model: nn.Module,
                 elif input_layer not in get_tensor_recipients[id(output_tensor)]:
                     get_tensor_recipients[id(output_tensor)].append(input_layer)
 
-    """ linke each layer's next layers """
+    """ linke each layer's next layers using queue """
     next_layers = [[] for _ in range(len(prunable_layers))]
     for i, layer in enumerate(prunable_layers):
         relevant_tensors = queue.Queue()
@@ -225,7 +226,7 @@ def extract_prunable_layer_dependence(model: nn.Module,
             if next_layer_info[1] > 0:
                 pre_idx_offset = next_layer_info[1]
             else:
-                if isinstance(next_layer_info[0], nn.Linear):
+                if isinstance(next_layer_info[0], PRUNABLE_LAYERS):
                     next_layer_info[1] = pre_idx_offset
 
     return next_layers, layer_cluster_mask
@@ -309,4 +310,5 @@ def adjust_prune_distribution_for_cluster(prune_distribution: Tensor,
     for idx, mask in enumerate(layer_cluster_mask):
         if mask > 0:
             prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
+    prune_distribution /= torch.sum(prune_distribution)
     return prune_distribution

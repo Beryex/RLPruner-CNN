@@ -73,6 +73,7 @@ class VGG16(nn.Module):
             nn.Linear(4096, num_class)
         )
 
+
     def forward(self, 
                 x: Tensor):
         x = self.conv_layers(x)

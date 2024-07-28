@@ -108,8 +108,7 @@ class GoogleNet(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout2d()
         self.linear = nn.Linear(1024, num_class)
-
-        self.prune_choices_num = 67
+        
 
     def forward(self, x):
         x = self.prelayer(x)

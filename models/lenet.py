@@ -27,9 +27,6 @@ class LeNet5(nn.Module):
             nn.Linear(84, num_class)
         )
         
-        self.prune_choices_num = 4
-        self.last_conv_layer_idx = 1
-        self.prune_choices = torch.tensor([0, 4, 0, 3])
     
     def forward(self, x: Tensor):
         x = self.conv_layers(x)
