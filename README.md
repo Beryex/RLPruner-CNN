@@ -28,5 +28,8 @@ conda activate RLPruner
 pip install -r requirements.txt
 ```
 ## Usage
-Here is a example bash in folder scripts.
+RLPruner could auto detect the layer dependence inside the model and execute structural pruning. So it can accept any type of CNN without model-wise pruning code implementation. However, RLPruner assume that, in the model definition:
+- the output layer is defined last
+- Use self.act = nn.ReLU(inplace=True) and def forward(x): return self.act(layer1(x) + layer2(x)), rather than def forward(x): return nn.ReLU(inplace=True)(layer1(x) + layer2(x)).
+There is a example bash in [scripts](scripts) folder. Change the model and dataset to try your own model and you need to store your model with name {model_name}_{dataset_name}_original.pth at pretrained_model folder.
 ## Results
