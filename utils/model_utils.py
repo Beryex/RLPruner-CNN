@@ -191,12 +191,13 @@ def extract_prunable_layer_dependence(model: nn.Module,
             elif isinstance(next_layer, (CONV_LAYERS, nn.AdaptiveAvgPool2d)):
                 if offset == -1:
                     # if the connection offset mismatch, there exists residual layer
-                    # check if it is previous residual cluster
                     if len(involved_tensors) == 0:
+                        # if no previous residual cluster, create one
                         involved_tensors.append(get_layer_output_tensor[layer])
                         involved_tensors.append(get_layer_input_tensor[next_layer])
                         layer_cluster_mask[layer_idx] = cur_cluster_mask
                     else:
+                        # else, we need to check if it belongs to the previous residual cluster
                         output_tensor1 = get_layer_output_tensor[layer]
                         component_tensor = get_layer_input_tensor[next_layer]
                         target_tensor = component_tensor - output_tensor1
@@ -219,15 +220,21 @@ def extract_prunable_layer_dependence(model: nn.Module,
                             involved_tensors.append(get_layer_input_tensor[next_layer])
                             layer_cluster_mask[layer_idx] = cur_cluster_mask
     
-    """ broadcast tensor idx offset at next linear layer """
+    """ broadcast tensor idx offset at next prunable layer """
+    # this is because the use of maxpool2d or x.view(x.size()[0], -1)
+    # that integrate inputs from different layer into a single output
+    # so we have to broadcast offset manually.
     for ith_next_layers in next_layers:
         pre_idx_offset = 0
         for next_layer_info in ith_next_layers:
             if next_layer_info[1] > 0:
                 pre_idx_offset = next_layer_info[1]
-            else:
+            elif next_layer_info[1] == 0:
                 if isinstance(next_layer_info[0], PRUNABLE_LAYERS):
                     next_layer_info[1] = pre_idx_offset
+            else:
+                # this occur when offset is -1, indicating residual shortcut
+                continue
 
     return next_layers, layer_cluster_mask
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MODEL=googlenet
+MODEL=resnet50
 DATASET=cifar100
 
 SPARSITY=0.5
@@ -51,7 +51,7 @@ CUDA_VISIBLE_DEVICES=0 python -m compress --model ${MODEL} --dataset ${DATASET} 
                                           --pretrained_pth ${PRETRAINED_MODEL_PTH} \
                                           --compressed_pth ${COMPRESSED_MODEL_PTH} \
                                           --checkpoint_dir ${CKPT_DIR} \
-                                          --log_dir ${LOG} 
+                                          --log_dir ${LOG} --use_wandb
 
 
 # Step 3: Evaluate the compression results
@@ -59,3 +59,4 @@ CUDA_VISIBLE_DEVICES=0 python -m evaluate --model ${MODEL} --dataset ${DATASET} 
                                           --pretrained_pth ${PRETRAINED_MODEL_PTH} \
                                           --compressed_pth ${COMPRESSED_MODEL_PTH} \
                                           --log_dir ${LOG}
+

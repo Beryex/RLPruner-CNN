@@ -80,7 +80,12 @@ class Prune_agent():
         noised_PD = noised_PD / torch.sum(noised_PD)
         noised_PD = adjust_prune_distribution_for_cluster(noised_PD, self.layer_cluster_mask)
         prune_counter = torch.round(noised_PD * self.modification_num).int().tolist()
-        decred_layer = {}
+        
+        # used to track which layer's next PRUNABLE_LAYER has been decred input (marked as 1)
+        # in case in a cluster layer1 and layer2 combined as input to layer3, then 
+        # we could decre layer3 input twice
+        # we should not prevent mutiple decre input outside layer cluster
+        decred_layer = torch.zeros(len(prunable_layers))   
 
         """ Get each filter's importance """
         if "activation" == prune_strategy:
@@ -90,32 +95,63 @@ class Prune_agent():
         else:
             all_layer_filter_importance = get_filter_importance_weight(prunable_layers,
                                                                        prune_strategy)
+            
+        """ Average the filter importance inside a cluster to represent overall importance """
+        cluster_filter_importance = {}  # index 0 stores filter importance tensor, index 1 stores layer number
+        for target_layer_idx, count in enumerate(prune_counter):
+            cluster_mask = self.layer_cluster_mask[target_layer_idx]
+            if cluster_mask > 0:
+                filter_importance = all_layer_filter_importance[target_layer_idx]
+                if cluster_mask not in cluster_filter_importance:
+                    cluster_filter_importance[cluster_mask] = [filter_importance, 1]
+                else:
+                    if len(filter_importance) != len(cluster_filter_importance[cluster_mask][0]):
+                        raise ValueError(f"The filter numbers inside a cluster are different")
+                    cluster_filter_importance[cluster_mask] += [filter_importance, 1]
+        
+        for target_layer_idx, count in enumerate(prune_counter):
+            cluster_mask = self.layer_cluster_mask[target_layer_idx]
+            if cluster_mask > 0:
+                all_layer_filter_importance[target_layer_idx] = (cluster_filter_importance[cluster_mask][0] /
+                                                                 cluster_filter_importance[cluster_mask][1])
+            
         """ Prune each layer's filter based on importance """
         for target_layer_idx, count in enumerate(prune_counter):
-            target_layer = prunable_layers[target_layer_idx]
-            filter_importance = all_layer_filter_importance[target_layer_idx]
-            for _ in range(count):
-                if len(filter_importance) > 1:
-                    target_filter = torch.argmin(filter_importance).item()
-                    filter_importance = torch.cat((filter_importance[:target_filter], 
-                                                    filter_importance[target_filter + 1:]))
-                    if isinstance(target_layer, CONV_LAYERS):
-                        prune_conv_filter(target_layer_idx, 
-                                        target_layer, 
-                                        target_filter, 
-                                        next_layers, 
-                                        decred_layer)
-                    elif isinstance(target_layer, (nn.Linear)):
-                        prune_linear_filter(target_layer_idx, 
-                                            target_layer, 
-                                            target_filter, 
-                                            next_layers, 
-                                            decred_layer)
+            if self.layer_cluster_mask[target_layer_idx] == 0:
+                target_layer = prunable_layers[target_layer_idx]
+                filter_importance = all_layer_filter_importance[target_layer_idx]
+                
+                if isinstance(target_layer, CONV_LAYERS):
+                    prune_filter =  prune_conv_filter
+                elif isinstance(target_layer, (nn.Linear)):
+                    prune_filter = prune_linear_filter
                 else:
-                    self.prune_distribution[target_layer_idx] = 0
-                    self.prune_distribution = adjust_prune_distribution_for_cluster(self.prune_distribution,
-                                                                                    self.layer_cluster_mask)
-                    continue
+                    raise ValueError(f"Unsupported layer type: {target_layer}")
+                
+                if self.layer_cluster_mask[target_layer_idx] > 0:
+                    if decred_layer[target_layer_idx] == 1:
+                        decre_input = False
+                    else:
+                        decre_input = True
+                        decred_layer[target_layer_idx] = 1
+                else:
+                    decre_input = True
+
+                for _ in range(count):
+                    if len(filter_importance) > 1:
+                        target_filter = torch.argmin(filter_importance).item()
+                        filter_importance = torch.cat((filter_importance[:target_filter], 
+                                                        filter_importance[target_filter + 1:]))
+                        prune_filter(target_layer_idx, 
+                                     target_layer, 
+                                     target_filter, 
+                                     next_layers,
+                                     decre_input)
+                    else:
+                        self.prune_distribution[target_layer_idx] = 0
+                        self.prune_distribution = adjust_prune_distribution_for_cluster(self.prune_distribution,
+                                                                                        self.layer_cluster_mask)
+                        continue
 
         return noised_PD
 
@@ -187,7 +223,7 @@ def prune_conv_filter(target_layer_idx: int,
                       target_layer: nn.Module, 
                       target_filter: int,
                       next_layers: List,
-                      decred_layer: dict) -> None:
+                      decre_input: bool) -> None:
     """ Prune one conv filter and decrease next layers' input dim """
     with torch.no_grad():
         target_layer.weight.data = torch.cat([target_layer.weight.data[:target_filter], 
@@ -203,13 +239,6 @@ def prune_conv_filter(target_layer_idx: int,
 
     for next_layer_info in next_layers[target_layer_idx]:
         next_layer = next_layer_info[0]
-        if next_layer_info[1] == -1:
-            if next_layer not in decred_layer:
-                # means this layer involved in residual connection 
-                # and can only be decreased input once
-                decred_layer[next_layer] = target_layer
-            elif decred_layer[next_layer] != target_layer:
-                continue
         offset = max(next_layer_info[1], 0)
         
         if isinstance(next_layer, nn.BatchNorm2d):
@@ -228,7 +257,7 @@ def prune_conv_filter(target_layer_idx: int,
                 raise ValueError(f'BatchNorm layer number_features {target_bn.num_features} and '
                                  f'weight dimension {target_bn.weight.shape[0]} mismatch')
         
-        elif isinstance(next_layer, CONV_LAYERS):
+        elif isinstance(next_layer, CONV_LAYERS) and decre_input:
             # case 2: Conv
             with torch.no_grad():
                 kept_indices = [i for i in range(next_layer.in_channels) 
@@ -240,7 +269,7 @@ def prune_conv_filter(target_layer_idx: int,
                 raise ValueError(f'Conv2d layer in_channels {next_layer.in_channels} and '
                                  f'weight dimension {next_layer.weight.shape[1]} mismatch')
         
-        elif isinstance(next_layer, (nn.Linear)):
+        elif isinstance(next_layer, (nn.Linear)) and decre_input:
             # case 3: Linear
             output_area = 1 # default for most CNNs
             start_index = (target_filter + offset) * output_area ** 2
@@ -261,8 +290,8 @@ def prune_conv_filter(target_layer_idx: int,
 def prune_linear_filter(target_layer_idx: int,
                         target_layer: nn.Linear,
                         target_filter: int,
-                        next_layers: List, 
-                        decred_layer: dict) -> None:
+                        next_layers: List,
+                        decre_input: bool) -> None:
     """ Prune one linear filter and decrease next layers' input dim """
     with torch.no_grad():
         target_layer.weight.data = torch.cat([target_layer.weight.data[:target_filter], 
@@ -279,15 +308,8 @@ def prune_linear_filter(target_layer_idx: int,
     # update following layers
     for next_layer_info in next_layers[target_layer_idx]:
         next_layer = next_layer_info[0]
-        if next_layer_info[1] == -1:
-            if next_layer not in decred_layer:
-                # means this layer involved in residual connection 
-                # and can only be decreased input once
-                decred_layer[next_layer] = target_layer
-            elif decred_layer[next_layer] != target_layer:
-                continue
         offset = max(next_layer_info[1], 0)
-        if isinstance(next_layer, (nn.Linear)):
+        if isinstance(next_layer, (nn.Linear)) and decre_input:
             # case 1: Linear
             start_index = target_filter + offset
             end_index = start_index + 1
