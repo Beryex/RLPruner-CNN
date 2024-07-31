@@ -1,51 +1,91 @@
 import torch
 from torch import nn, Tensor
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 import queue
 
 
 # Define layer types for pruning and normalization
 PRUNABLE_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, 
                    nn.ConvTranspose2d, nn.ConvTranspose3d, nn.Linear)
-NORM_LAYERS = (nn.BatchNorm2d)
+NORM_LAYERS = (nn.BatchNorm2d, nn.BatchNorm1d)
 CONV_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, 
                nn.ConvTranspose2d, nn.ConvTranspose3d)
 
 # Define supported models
-MODELS = ["lenet5", "vgg16", "googlenet", "resnet50", "unet"]
+MODELS = ["vgg11", "vgg13", "vgg16", "vgg19",
+          "googlenet", 
+          "resnet18", "resnet34", "resnet50", "resnet101", "resnet152",
+          "MobileNetV3_Small", "MobileNetV3_Large"]
 
 # Define tensor comparision threshold for torch.allclose
 # This is necessary because of tensor computation overflow
-TENSOR_DIFFERENCE_THRESHOLD = 1e-4
+TENSOR_DIFFERENCE_THRESHOLD = 1e-3  # this seems too large, but necessary for some case overflow
 
 
 def get_model(model_name: str, in_channels: int, num_class: int) -> nn.Module:
     """ Retrieve a specific network model based on the given specifications """
-    if model_name == 'lenet5':
-        from models.lenet import LeNet5
-        return LeNet5(in_channels, num_class)
+    if model_name == 'vgg11':
+        from models.vgg import vgg11
+        return vgg11(in_channels, num_class)
+    elif model_name == 'vgg13':
+        from models.vgg import vgg13
+        return vgg13(in_channels, num_class)
     elif model_name == 'vgg16':
-        from models.vgg import VGG16
-        return VGG16(in_channels, num_class)
+        from models.vgg import vgg16
+        return vgg16(in_channels, num_class)
+    elif model_name == 'vgg19':
+        from models.vgg import vgg19
+        return vgg19(in_channels, num_class)
     elif model_name == 'googlenet':
         from models.googlenet import GoogleNet
         return GoogleNet(in_channels, num_class)
+    elif model_name == 'resnet18':
+        from models.resnet import resnet18
+        return resnet18(in_channels, num_class)
+    elif model_name == 'resnet34':
+        from models.resnet import resnet34
+        return resnet34(in_channels, num_class)
     elif model_name == 'resnet50':
-        from models.resnet import ResNet50
-        return ResNet50(in_channels, num_class)
-    elif model_name == 'unet':
-        from models.unet import UNet
-        return UNet(in_channels, num_class)
+        from models.resnet import resnet50
+        return resnet50(in_channels, num_class)
+    elif model_name == 'resnet101':
+        from models.resnet import resnet101
+        return resnet101(in_channels, num_class)
+    elif model_name == 'resnet152':
+        from models.resnet import resnet152
+        return resnet152(in_channels, num_class)
+    elif model_name == 'MobileNetV3_Small':
+        from models.mobilenetv3 import MobileNetV3_Small
+        return MobileNetV3_Small(in_channels, num_class)
+    elif model_name == 'MobileNetV3_Large':
+        from models.mobilenetv3 import MobileNetV3_Large
+        return MobileNetV3_Large(in_channels, num_class)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
 
+def set_inplace_false(model: nn.Module, original_inplace_state: Dict):
+    """ Turn off all the inplace execution for extracting layer interdependence later """
+    for name, module in model.named_modules():
+        if hasattr(module, 'inplace'):
+            original_inplace_state[name] = module.inplace
+            module.inplace = False
+
+
+def recover_inplace_status(model: nn.Module, original_inplace_state: Dict):
+    """ Recover the inplace status of layer in the model """
+    for name, module in model.named_modules():
+        if name in original_inplace_state:
+            module.inplace = original_inplace_state[name]
+
+
+@torch.no_grad()
 def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
     """ Extracts prunable layer information from a given neural network model """
     prunable_layers = []
     output_dims = []
 
-    def recursive_extract_prunable_layers_info(module: nn.Module, parent: nn.Module):
+    def recursive_extract_prunable_layers_info(module: nn.Module):
         """ Recursively extracts prunable layers from a module """
         children = list(module.children())
         for child in children:
@@ -55,9 +95,9 @@ def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
                     output_dims.append(child.out_channels)
                 elif isinstance(child, nn.Linear):
                     output_dims.append(child.out_features)
-            recursive_extract_prunable_layers_info(child, module)
+            recursive_extract_prunable_layers_info(child)
     
-    recursive_extract_prunable_layers_info(model, None)
+    recursive_extract_prunable_layers_info(model)
     
     # remove the ouput layer as its out dim should equal to class num and can not be pruned
     # assumer the output layer is the last defined
@@ -68,6 +108,7 @@ def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
     filter_distribution = [dim / total_output_dim for dim in output_dims]
     
     return torch.tensor(filter_distribution), total_output_dim, prunable_layers
+
 
 @torch.no_grad()
 def extract_prunable_layer_dependence(model: nn.Module, 
@@ -81,15 +122,15 @@ def extract_prunable_layer_dependence(model: nn.Module,
     get_layer_input_tensor = {}
     get_layer_output_tensor = {}
 
-    def recursive_collect_all_layers(module: nn.Module, parent: nn.Module) -> None:
+    def recursive_collect_all_layers(module: nn.Module) -> None:
         """ Recursively extracts prunable layers from a module """
         children = list(module.children())
         for layer in children:
             if not list(layer.children()):
                 all_layers.append(layer)
-            recursive_collect_all_layers(layer, module)
+            recursive_collect_all_layers(layer)
     
-    recursive_collect_all_layers(model, None)
+    recursive_collect_all_layers(model)
 
     def forward_hook(layer: nn.Module, input: Tuple, output: Tensor) -> None:
         """ Link each layer's I/O tensor to itself """
@@ -127,13 +168,12 @@ def extract_prunable_layer_dependence(model: nn.Module,
     """ link special layer """
     for output_layer, output_tensor in get_layer_output_tensor.items():
         for input_layer, input_tensor in get_layer_input_tensor.items():
-            if (((id(output_tensor) in get_tensor_recipients 
-                    and input_layer in get_tensor_recipients[id(output_tensor)]))
+            if (id(input_layer) == id(output_layer)
                     or isinstance(input_layer, NORM_LAYERS)):       # assume input layer is never norm type
                 continue
             if (isinstance (input_layer, nn.Linear) 
                     and check_tensor_use_view(output_tensor, input_tensor)):
-                # case 1: use x = x.view(x.size()[0], -1) before linear
+                # case 1: use x = x.view(x.size()[0], -1) or flatten(1) before linear
                 if id(output_tensor) not in get_tensor_recipients:
                     get_tensor_recipients[id(output_tensor)] = [input_layer]
                 elif input_layer not in get_tensor_recipients[id(output_tensor)]:
@@ -155,10 +195,25 @@ def extract_prunable_layer_dependence(model: nn.Module,
             
             elif check_tensor_residual(output_tensor, input_tensor, get_layer_input_tensor):
                 # case 4: use residual short cut: input_tensor = output_tensor + another input_tensor
+                # actually after I turn off all inplace execution, case 4 will be included as case 3
                 if id(output_tensor) not in get_tensor_recipients:
                     get_tensor_recipients[id(output_tensor)] = [input_layer]
                 elif input_layer not in get_tensor_recipients[id(output_tensor)]:
                     get_tensor_recipients[id(output_tensor)].append(input_layer)
+            
+            elif check_tensor_squeeze_excitation(output_tensor, input_tensor, get_layer_output_tensor):
+                # case 5: use squeeze excitation: input_tensor = output_tensor * another output
+                if id(output_tensor) not in get_tensor_recipients:
+                    get_tensor_recipients[id(output_tensor)] = [input_layer]
+                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
+                    get_tensor_recipients[id(output_tensor)].append(input_layer)
+
+    '''""" Check layer Linkage (combined with print model for debug purpose) """
+    for layer, tensor in get_layer_output_tensor.items():
+        print("\n")
+        print(layer)
+        if id(tensor) in get_tensor_recipients:
+            print(get_tensor_recipients[id(tensor)])'''
 
     """ linke each layer's next layers using queue """
     next_layers = [[] for _ in range(len(prunable_layers))]
@@ -170,8 +225,10 @@ def extract_prunable_layer_dependence(model: nn.Module,
             cur_tensor_recipients = get_tensor_recipients[id(cur_tensor)]
             for recipient in cur_tensor_recipients:
                 component_tensor = get_layer_input_tensor[recipient]
+                # skip inplace execution layer
                 element = [recipient, get_tensor_idx_at_next_layer(cur_tensor, component_tensor)]
                 next_layers[i].append(element)
+                # stop at the first prunable layers at current branch
                 if not isinstance(recipient, PRUNABLE_LAYERS):
                     relevant_tensors.put(get_layer_output_tensor[recipient])
     
@@ -180,45 +237,64 @@ def extract_prunable_layer_dependence(model: nn.Module,
     # any value greater than 1 means this layer is in a residual cluster with 
     # the same that value and all layers inside a group should be pruned together
     layer_cluster_mask = [0 for _ in range(len(prunable_layers))]
-    cur_cluster_mask = 1
-    involved_tensors = []
+    cur_cluster_max_mask = 1
+    cur_cluster_tensors = {}
     for layer_idx, layer in enumerate(prunable_layers):
         for next_layer_info in next_layers[layer_idx]:
             next_layer = next_layer_info[0]
             offset = next_layer_info[1]
-            if isinstance(next_layer, NORM_LAYERS):
+            if offset >= 0:
                 layer = next_layer
-            elif isinstance(next_layer, (CONV_LAYERS, nn.AdaptiveAvgPool2d)):
-                if offset == -1:
-                    # if the connection offset mismatch, there exists residual layer
-                    if len(involved_tensors) == 0:
-                        # if no previous residual cluster, create one
-                        involved_tensors.append(get_layer_output_tensor[layer])
-                        involved_tensors.append(get_layer_input_tensor[next_layer])
-                        layer_cluster_mask[layer_idx] = cur_cluster_mask
-                    else:
-                        # else, we need to check if it belongs to the previous residual cluster
-                        output_tensor1 = get_layer_output_tensor[layer]
-                        component_tensor = get_layer_input_tensor[next_layer]
-                        target_tensor = component_tensor - output_tensor1
-                        in_previous_cluster = False
-                        for output_tensor2 in involved_tensors:
-                            if (target_tensor.shape == output_tensor2.shape and
-                                    torch.allclose(target_tensor, output_tensor2, 
-                                                   atol=TENSOR_DIFFERENCE_THRESHOLD)):
-                                # indicates the new layer is still in prevuous residual cluster
-                                involved_tensors.append(get_layer_output_tensor[layer])
-                                involved_tensors.append(get_layer_input_tensor[next_layer])
-                                layer_cluster_mask[layer_idx] = cur_cluster_mask
-                                in_previous_cluster = True
-                                break
-                        if in_previous_cluster == False:
-                            # indicates the new layer is starting a new cluster
-                            cur_cluster_mask += 1
-                            involved_tensors = []
-                            involved_tensors.append(get_layer_output_tensor[layer])
-                            involved_tensors.append(get_layer_input_tensor[next_layer])
+            elif offset == -1:
+                # if the connection offset mismatch, there exists residual layer
+                if cur_cluster_max_mask not in cur_cluster_tensors:
+                    # if no previous residual cluster, create one
+                    cur_cluster_tensors[cur_cluster_max_mask] = []
+                    cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_input_tensor[layer])
+                    cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_output_tensor[layer])
+                    cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_input_tensor[next_layer])
+                    cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_output_tensor[next_layer])
+                    layer_cluster_mask[layer_idx] = cur_cluster_max_mask
+                else:
+                    # else, we need to check if it belongs to the previous residual cluster
+                    output_tensor = get_layer_output_tensor[layer]
+                    component_tensor = get_layer_input_tensor[next_layer]
+                    find_existing = False
+                    for cur_cluster_mask in range(1, 1 + cur_cluster_max_mask):
+                        if check_tensor_in_cluster(output_tensor, 
+                                                component_tensor, 
+                                                cur_cluster_tensors[cur_cluster_mask]):
+                            # indicates the new layer is still in prevuous residual cluster
+                            cur_cluster_tensors[cur_cluster_mask].append(get_layer_input_tensor[layer])
+                            cur_cluster_tensors[cur_cluster_mask].append(get_layer_output_tensor[layer])
+                            cur_cluster_tensors[cur_cluster_mask].append(get_layer_input_tensor[next_layer])
+                            cur_cluster_tensors[cur_cluster_mask].append(get_layer_output_tensor[next_layer])
                             layer_cluster_mask[layer_idx] = cur_cluster_mask
+                            find_existing = True
+                    if find_existing == False:
+                        # indicates the new layer is starting a new cluster
+                        cur_cluster_max_mask += 1
+                        cur_cluster_tensors[cur_cluster_max_mask] = []
+                        cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_input_tensor[layer])
+                        cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_output_tensor[layer])
+                        cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_input_tensor[next_layer])
+                        cur_cluster_tensors[cur_cluster_max_mask].append(get_layer_output_tensor[next_layer])
+                        layer_cluster_mask[layer_idx] = cur_cluster_max_mask
+                break
+    
+    """ Move mask for each grouped convolution layer to its previous conv layer as we skip them during pruning """
+    # Case: (conv -> grouped conv) + (conv -> grouped conv) -> conv
+    # TO DO: this part does not work when (grouped conv -> grouped conv) + (grouped conv -> grouped conv) -> conv
+    for idx, layer in enumerate(prunable_layers):
+        if isinstance(layer, nn.Conv2d) and layer.groups > 1 and layer_cluster_mask[idx] > 0:
+            target_layer = layer
+            target_mask = layer_cluster_mask[idx]
+            layer_cluster_mask[idx] = 0
+            for target_idx, next_layers_info in enumerate(next_layers):
+                for next_layer_info in next_layers_info:
+                    next_layer = next_layer_info[0]
+                    if id(next_layer) == id(target_layer):
+                        layer_cluster_mask[target_idx] = target_mask
     
     """ broadcast tensor idx offset at next prunable layer """
     # this is because the use of maxpool2d or x.view(x.size()[0], -1)
@@ -238,6 +314,7 @@ def extract_prunable_layer_dependence(model: nn.Module,
 
     return next_layers, layer_cluster_mask
 
+
 def check_tensor_in_concat(input_tensor: Tensor, component_tensor: Tensor) -> bool:
     """ Check whether component_tensor is acquired by concatenating using input_tensor """
     if input_tensor.shape[2:] != component_tensor.shape[2:]:
@@ -247,6 +324,7 @@ def check_tensor_in_concat(input_tensor: Tensor, component_tensor: Tensor) -> bo
         return False
     else:
         return True
+
 
 def get_tensor_idx_at_next_layer(input_tensor: Tensor, component_tensor: Tensor) -> int:
     """ get the starting index of input_tensor in component_tensor, -1 if fail """
@@ -268,14 +346,16 @@ def get_tensor_idx_at_next_layer(input_tensor: Tensor, component_tensor: Tensor)
             return i
     return -1
 
+
 def check_tensor_use_view(input_tensor: Tensor, target_tensor: Tensor) -> bool:
     """ Check whether target_tensor is acquired using input_tensor.view() """
     return torch.equal(input_tensor.view(input_tensor.size(0), -1), 
                        target_tensor.view(target_tensor.size(0), -1))
 
+
 def check_tensor_addition(input_tensor: Tensor, 
                           component_tensor: Tensor, 
-                          get_layer_output_tensor: dict) -> bool:
+                          get_layer_output_tensor: Dict) -> bool:
     """ Check whether component_tensor == input_tensor + another layer's output """
     if component_tensor.shape != input_tensor.shape:
         return False
@@ -287,9 +367,10 @@ def check_tensor_addition(input_tensor: Tensor,
                 return True
     return False
 
+
 def check_tensor_residual(input_tensor: Tensor, 
                           component_tensor: Tensor, 
-                          get_layer_input_tensor: dict) -> bool:
+                          get_layer_input_tensor: Dict) -> bool:
     """ Check whether component tensor == input_tensor + another layer's input """
     if component_tensor.shape != input_tensor.shape:
         return False
@@ -301,8 +382,72 @@ def check_tensor_residual(input_tensor: Tensor,
                 return True
     return False
 
-def adjust_prune_distribution_for_cluster(prune_distribution: Tensor, 
-                                          layer_cluster_mask: List) -> Tensor:
+
+def check_tensor_squeeze_excitation(input_tensor: Tensor,
+                                    component_tensor: Tensor,
+                                    get_layer_output_tensor: Dict):
+    """ Check whether component tensor == input_tensor * another layer's input """
+    if component_tensor.shape != input_tensor.shape:
+        if (component_tensor.ndim == input_tensor.ndim 
+                and component_tensor.shape[0:2] == input_tensor.shape[0:2]
+                and input_tensor.shape[2:4] == torch.Size([1, 1])):
+            # cause tensor multiply will automatically broadcast
+            # Here we will also expand dimension for comparision
+            input_tensor = input_tensor.expand_as(component_tensor)
+        else:
+            return False
+        input_tensor = input_tensor.reshape(component_tensor.shape)
+    residual_tensor = component_tensor / input_tensor
+    for tensor in get_layer_output_tensor.values():
+        if tensor.shape == residual_tensor.shape:
+            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+        elif (tensor.ndim == residual_tensor.ndim
+                and tensor.shape[0:2] == residual_tensor.shape[0:2]
+                and tensor.shape[2:4] == torch.Size([1, 1])):
+            # Here again, we should also expand dimension
+            tensor = tensor.expand_as(residual_tensor)
+            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+            
+    return False
+
+
+def check_tensor_in_cluster(input_tensor: Tensor, 
+                            component_tensor: Tensor, 
+                            cur_cluster_tensors: List):
+    if component_tensor.shape != input_tensor.shape:
+        if (component_tensor.ndim == input_tensor.ndim 
+                and component_tensor.shape[0:2] == input_tensor.shape[0:2]
+                and input_tensor.shape[2:4] == torch.Size([1, 1])):
+            # again, expand input tensor if necessary
+            input_tensor = input_tensor.expand_as(component_tensor)
+        else:
+            return False
+    target_tensor1 = component_tensor - input_tensor
+    target_tensor2 = component_tensor / input_tensor
+    for cluster_input_tensor in cur_cluster_tensors:
+        if cluster_input_tensor.shape == target_tensor1.shape:
+            if torch.allclose(cluster_input_tensor, target_tensor1, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+            if torch.allclose(cluster_input_tensor, target_tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+        elif (cluster_input_tensor.ndim == target_tensor1.ndim
+                and cluster_input_tensor.shape[0:2] == target_tensor1.shape[0:2]
+                and cluster_input_tensor.shape[2:4] == torch.Size([1, 1])):
+            # Here again, we should also expand dimension
+            cluster_input_tensor = cluster_input_tensor.expand_as(target_tensor1)
+            if torch.allclose(cluster_input_tensor, target_tensor1, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+            if torch.allclose(cluster_input_tensor, target_tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD):
+                return True
+            
+    return False
+
+
+def adjust_prune_distribution(prunable_layers: List,
+                              prune_distribution: Tensor, 
+                              layer_cluster_mask: List) -> Tensor:
     """ Adjust so that layer among non-zero cluster has equal probability to be pruned """
     cluster_total_value = {}
     cluster_layer_number = {}
@@ -318,4 +463,14 @@ def adjust_prune_distribution_for_cluster(prune_distribution: Tensor,
         if mask > 0:
             prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
     prune_distribution /= torch.sum(prune_distribution)
+
+    """ Adjust so that layer has only 1 out dim layer cant be pruned """
+    for idx, layer in enumerate(prunable_layers):
+        if isinstance(layer, CONV_LAYERS) and layer.out_channels <= 1:
+            prune_distribution[idx] = 0
+    
+    """ Adjust so that grouped convolution layers will be skiped """
+    for idx, layer in enumerate(prunable_layers):
+        if isinstance(layer, CONV_LAYERS) and layer.groups > 1:
+            prune_distribution[idx] = 0
     return prune_distribution

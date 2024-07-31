@@ -1,9 +1,9 @@
 #!/bin/bash
 
-MODEL=resnet50
+MODEL=vgg16
 DATASET=cifar100
 
-SPARSITY=0.5
+SPARSITY=0.60
 
 LOG=log
 CKPT=checkpoint
@@ -35,28 +35,28 @@ if [ ! -d "${COMPRESSED_MODEL_DIR}" ]; then
     mkdir -p "${COMPRESSED_MODEL_DIR}"
 fi
 
-: '
+
 # Step 1: train model (This is optional, skip this step if you have pretrained model)
 # If you skip shis, make sure your pretrained model is named as "${model}_${dataset}_original.pth"
-CUDA_VISIBLE_DEVICES=0 python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
-                                       --model_dir ${MODEL_DIR} --output_pth ${PRETRAINED_MODEL_PTH} \
-                                       --log_dir ${LOG} --use_wandb
-'
+python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
+                --model_dir ${MODEL_DIR} --output_pth ${PRETRAINED_MODEL_PTH} \
+                --log_dir ${LOG} --use_wandb
+
+
 
 # Step 2: Compress trained model
-CUDA_VISIBLE_DEVICES=0 python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
-                                          --sparsity ${SPARSITY} --prune_strategy variance \
-                                          --greedy_epsilon 0 --ppo \
-                                          --noise_var 0.025 --ppo_clip 0.2 \
-                                          --pretrained_pth ${PRETRAINED_MODEL_PTH} \
-                                          --compressed_pth ${COMPRESSED_MODEL_PTH} \
-                                          --checkpoint_dir ${CKPT_DIR} \
-                                          --log_dir ${LOG} --use_wandb
+python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
+                   --sparsity ${SPARSITY} --prune_strategy variance \
+                   --greedy_epsilon 0 --ppo \
+                   --noise_var 0.04 --ppo_clip 0.2 \
+                   --pretrained_pth ${PRETRAINED_MODEL_PTH} \
+                   --compressed_pth ${COMPRESSED_MODEL_PTH} \
+                   --checkpoint_dir ${CKPT_DIR} \
+                   --log_dir ${LOG} --use_wandb
 
 
 # Step 3: Evaluate the compression results
-CUDA_VISIBLE_DEVICES=0 python -m evaluate --model ${MODEL} --dataset ${DATASET} --device cuda \
-                                          --pretrained_pth ${PRETRAINED_MODEL_PTH} \
-                                          --compressed_pth ${COMPRESSED_MODEL_PTH} \
-                                          --log_dir ${LOG}
-
+python -m evaluate --model ${MODEL} --dataset ${DATASET} --device cuda \
+                   --pretrained_pth ${PRETRAINED_MODEL_PTH} \
+                   --compressed_pth ${COMPRESSED_MODEL_PTH} \
+                   --log_dir ${LOG}

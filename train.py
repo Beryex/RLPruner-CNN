@@ -78,7 +78,7 @@ def main():
                 best_acc = top1_acc
                 torch.save(model, args.output_pth)
             
-            pbar.set_postfix({'Train loss': train_loss, 'Top1 acc': top1_acc})
+            pbar.set_postfix({'Train loss': train_loss, 'Best top1 acc': best_acc, 'Top1 acc': top1_acc})
             pbar.update(1)
     
     wandb.finish()

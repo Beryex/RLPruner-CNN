@@ -64,6 +64,7 @@ def main():
                      f"Pretrained {model_name}: {result[0]} "
                      f"Comressed {model_name}: {result[1]} "
                      f"Improvement: {result[2]}")
+    logging.info(f"Compressed model: {compressed_model}")
     print(results_table.get_string(title=f"Compression results of {model_name} on {dataset_name}"))
 
 

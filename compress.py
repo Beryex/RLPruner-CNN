@@ -14,9 +14,8 @@ import wandb
 import logging
 
 from conf import settings
-from utils import (extract_prunable_layers_info, extract_prunable_layer_dependence, 
-                   adjust_prune_distribution_for_cluster, get_dataloader, setup_logging, 
-                   Prune_agent, torch_set_random_seed, torch_resume_random_seed, 
+from utils import (setup_logging, get_dataloader, 
+                   RL_Pruner, torch_set_random_seed, torch_resume_random_seed,
                    WarmUpLR, DATASETS, PRUNE_STRATEGY)
 
 
@@ -84,24 +83,12 @@ def main():
         eval_loader = test_loader
         loss_function = nn.CrossEntropyLoss()
     
-    """ Extract layer dependence for pruning """
+    """ get compression data """
     if dataset_name == 'mnist':
         sample_input = torch.rand(1, 1, 32, 32).to(device)
     else:
         sample_input = torch.rand(1, 3, 32, 32).to(device)
-    sample_input.requires_grad = True # used to extract layer interdependence
 
-    logging.info(f'Start extracting layers dependency')
-    prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(model)
-    next_layers, layer_cluster_mask = extract_prunable_layer_dependence(model, 
-                                                                        sample_input, 
-                                                                        prunable_layers)
-    prune_distribution = adjust_prune_distribution_for_cluster(prune_distribution, 
-                                                               layer_cluster_mask)
-    model_with_info = (model, prunable_layers, next_layers)
-    logging.info(f'Complete extracting layers dependency')
-    
-    """ get compression data """
     if args.resume:
         original_para_num = prev_checkpoint['original_para_num']
         original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
@@ -116,17 +103,13 @@ def main():
 
         initial_top1_acc, _, _ = evaluate(model)
 
-    """ get prune agent """
+    """ Initialize prune agent to be RL_Pruner """
     if args.resume:
         prune_agent = prev_checkpoint['prune_agent']
     else:
-        # Replay buffer [:, 0] stores Q value Q(s, a), [:, 1:] stores action PD
-        ReplayBuffer = torch.zeros([args.sample_num, 1 + len(prune_distribution)])
-        prune_agent = Prune_agent(prune_distribution=prune_distribution,
-                                  layer_cluster_mask=layer_cluster_mask,
-                                  ReplayBuffer=ReplayBuffer,
+        prune_agent = RL_Pruner(model=model,
+                                  sample_input=sample_input,
                                   sample_num=args.sample_num,
-                                  filter_num=filter_num, 
                                   prune_filter_ratio=args.prune_filter_ratio,
                                   noise_var=args.noise_var)
         logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
@@ -136,9 +119,7 @@ def main():
                    "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                    "Para_compression_ratio": Para_compression_ratio}, 
                    step=prev_epoch)
-        for i in range(len(prune_distribution)):
-            wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
-                      step=prev_epoch)
+    model_with_info = prune_agent.get_linked_model()
     
     """ set random seed for reproducible usage """
     if args.resume:
@@ -286,7 +267,7 @@ def evaluate(model: nn.Module):
 
 
 def generate_architecture(original_model_with_info: Tuple,
-                          prune_agent: Prune_agent) -> Tuple[nn.Module, List, List]:
+                          prune_agent: RL_Pruner) -> Tuple[nn.Module, List, List]:
     """ Generate architecture using RL """
     best_Q_value = 0
     with tqdm(total=args.lr_epoch, desc=f'Sampling', unit='epoch', leave=False) as pbar:
@@ -329,9 +310,9 @@ def generate_architecture(original_model_with_info: Tuple,
 
 def sample_trajectory(cur_step: int, 
                       original_model_with_info: Tuple,
-                      prune_agent: Prune_agent, 
+                      prune_agent: RL_Pruner, 
                       Q_value_dict: dict) -> None:
-    """ Sample trajectory using DFS """
+    """ Sample trajectory using Depth First Search """
     if cur_step == args.sample_step:
         return
     
@@ -341,10 +322,10 @@ def sample_trajectory(cur_step: int,
     for model_id in range(cur_generate_num):
         generated_model_with_info = copy.deepcopy(original_model_with_info)
         generated_model, generated_prunable_layers, generated_next_layers = generated_model_with_info
-        prune_distribution_action = prune_agent.prune_architecture(generated_model,
-                                                                   eval_loader,
-                                                                   generated_prunable_layers, 
-                                                                   generated_next_layers,
+        
+        """ Link the generated model and prune it """
+        prune_agent.link_model(generated_model_with_info)
+        prune_distribution_action = prune_agent.prune_architecture(eval_loader,
                                                                    args.prune_strategy)
 
         # evaluate generated architecture
@@ -352,9 +333,9 @@ def sample_trajectory(cur_step: int,
         Q_value_dict[cur_step][model_id] = top1_acc
     
         sample_trajectory(cur_step=cur_step + 1, 
-                            original_model_with_info=generated_model_with_info, 
-                            prune_agent=prune_agent, 
-                            Q_value_dict=Q_value_dict)
+                          original_model_with_info=generated_model_with_info, 
+                          prune_agent=prune_agent, 
+                          Q_value_dict=Q_value_dict)
 
         if cur_step + 1 in Q_value_dict:
             Q_value_dict[cur_step][model_id] += args.discount_factor * torch.max(Q_value_dict[cur_step + 1])
