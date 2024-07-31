@@ -8,62 +8,23 @@ https://github.com/weiaicunzai/pytorch-cifar100/
 """
 
 
-from torch import Tensor
+import torch
 import torch.nn as nn
 
-class VGG16(nn.Module):
-    def __init__(self, 
-                 in_channels: int =3, 
-                 num_class: int =100):
-        super().__init__()
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(256, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
+cfg = {
+    'A' : [64,     'M', 128,      'M', 256, 256,           'M', 512, 512,           'M', 512, 512,           'M'],
+    'B' : [64, 64, 'M', 128, 128, 'M', 256, 256,           'M', 512, 512,           'M', 512, 512,           'M'],
+    'D' : [64, 64, 'M', 128, 128, 'M', 256, 256, 256,      'M', 512, 512, 512,      'M', 512, 512, 512,      'M'],
+    'E' : [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
+}
 
-        self.linear_layers = nn.Sequential(
+class VGG(nn.Module):
+
+    def __init__(self, features, in_channels=3, num_class=100):
+        super().__init__()
+        self.features = features
+
+        self.classifier = nn.Sequential(
             nn.Linear(512, 4096),
             nn.ReLU(inplace=True),
             nn.Dropout(),
@@ -73,9 +34,40 @@ class VGG16(nn.Module):
             nn.Linear(4096, num_class)
         )
 
-    def forward(self, 
-                x: Tensor):
-        x = self.conv_layers(x)
-        x = x.view(x.size()[0], -1)
-        x = self.linear_layers(x)
-        return x
+    def forward(self, x):
+        output = self.features(x)
+        output = output.view(output.size()[0], -1)
+        output = self.classifier(output)
+
+        return output
+
+def make_layers(cfg, batch_norm=False, in_channels=3):
+    layers = []
+
+    input_channel = in_channels
+    for l in cfg:
+        if l == 'M':
+            layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+            continue
+
+        layers += [nn.Conv2d(input_channel, l, kernel_size=3, padding=1)]
+
+        if batch_norm:
+            layers += [nn.BatchNorm2d(l)]
+
+        layers += [nn.ReLU(inplace=True)]
+        input_channel = l
+
+    return nn.Sequential(*layers)
+
+def vgg11(in_channels: int, num_class: int):
+    return VGG(make_layers(cfg['A'], batch_norm=True, in_channels=in_channels), num_class)    
+
+def vgg13(in_channels: int, num_class: int):
+    return VGG(make_layers(cfg['B'], batch_norm=True, in_channels=in_channels), num_class)
+
+def vgg16(in_channels: int, num_class: int):
+    return VGG(make_layers(cfg['D'], batch_norm=True, in_channels=in_channels), num_class)
+
+def vgg19(in_channels: int, num_class: int):
+    return VGG(make_layers(cfg['E'], batch_norm=True, in_channels=in_channels), num_class)

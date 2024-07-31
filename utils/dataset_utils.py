@@ -61,11 +61,11 @@ def get_dataloader(dataset_name: str,
                                           pin_memory=pin_memory,
                                           worker_init_fn=worker_init_fn)
         
-        mnist_test = torchvision.datasets.MNIST(root='./data', 
-                                                train=False, 
-                                                download=True, 
-                                                transform=transform_test)
-        mnist_test_loader = DataLoader(mnist_test, 
+        mnist_test_dataset = torchvision.datasets.MNIST(root='./data', 
+                                                        train=False, 
+                                                        download=True, 
+                                                        transform=transform_test)
+        mnist_test_loader = DataLoader(mnist_test_dataset, 
                                        shuffle=shuffle, 
                                        num_workers=num_workers, 
                                        batch_size=batch_size, 
@@ -113,11 +113,11 @@ def get_dataloader(dataset_name: str,
                                             pin_memory=pin_memory,
                                             worker_init_fn=worker_init_fn)
 
-        cifar10_test = torchvision.datasets.CIFAR10(root='./data', 
-                                                    train=False, 
-                                                    download=True, 
-                                                    transform=transform_test)
-        cifar10_test_loader = DataLoader(cifar10_test, 
+        cifar10_test_dataset = torchvision.datasets.CIFAR10(root='./data', 
+                                                            train=False, 
+                                                            download=True, 
+                                                            transform=transform_test)
+        cifar10_test_loader = DataLoader(cifar10_test_dataset, 
                                          shuffle=shuffle, 
                                          num_workers=num_workers, 
                                          batch_size=batch_size, 
@@ -165,11 +165,11 @@ def get_dataloader(dataset_name: str,
                                              pin_memory=pin_memory,
                                              worker_init_fn=worker_init_fn)
 
-        cifar100_test = torchvision.datasets.CIFAR100(root='./data', 
-                                                      train=False, 
-                                                      download=True, 
-                                                      transform=transform_test)
-        cifar100_test_loader = DataLoader(cifar100_test, 
+        cifar100_test_dataset = torchvision.datasets.CIFAR100(root='./data', 
+                                                              train=False, 
+                                                              download=True, 
+                                                              transform=transform_test)
+        cifar100_test_loader = DataLoader(cifar100_test_dataset, 
                                           shuffle=shuffle, 
                                           num_workers=num_workers, 
                                           batch_size=batch_size, 
