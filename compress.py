@@ -14,7 +14,7 @@ import wandb
 import logging
 
 from conf import settings
-from utils import (setup_logging, get_dataloader, 
+from utils import (setup_logging, get_dataloader, get_dataloader_with_checkpoint,
                    RL_Pruner, torch_set_random_seed, torch_resume_random_seed,
                    WarmUpLR, DATASETS, PRUNE_STRATEGY)
 
@@ -47,12 +47,13 @@ def main():
                       action='compress',
                       use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
+        print(f"Resume Logging setup complete for experiment id: {experiment_id}")
 
         model = torch.load(f"{args.checkpoint_dir}/{args.resume_epoch}/model.pth").to(device)
-        teacher_model = torch.load(f"{args.pretrained_pth}").to(device)
-        train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
-                                                                       batch_size=args.batch_size, 
-                                                                       num_workers=args.num_worker)
+        teacher_model = torch.load(f"{args.checkpoint_dir}/{args.resume_epoch}/teacher.pth").to(device)
+        train_loader, valid_loader, test_loader = get_dataloader_with_checkpoint(prev_checkpoint, 
+                                                                                 batch_size=args.batch_size, 
+                                                                                 num_workers=args.num_worker)
         eval_loader = test_loader
         loss_function = prev_checkpoint['loss_function']
     else:
@@ -74,6 +75,7 @@ def main():
                       action='compress',
                       use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
+        print(f"Logging setup complete for experiment id: {experiment_id}")
 
         model = torch.load(f"{args.pretrained_pth}").to(device)
         teacher_model = copy.deepcopy(model).to(device)
@@ -94,6 +96,7 @@ def main():
         original_FLOPs_num = prev_checkpoint['original_FLOPs_num']
         Para_compression_ratio = prev_checkpoint['Para_compression_ratio']
         FLOPs_compression_ratio = prev_checkpoint['FLOPs_compression_ratio']
+        teacher_top1_acc = prev_checkpoint['teacher_top1_acc']
     else:
         original_FLOPs_num, original_para_num = profile(model=model, 
                                                         inputs = (sample_input, ), 
@@ -101,20 +104,21 @@ def main():
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
 
-        initial_top1_acc, _, _ = evaluate(model)
+        teacher_top1_acc, _, _ = evaluate(model)
 
     """ Initialize prune agent to be RL_Pruner """
     if args.resume:
         prune_agent = prev_checkpoint['prune_agent']
+        prune_agent.resume_model(model, sample_input)
     else:
         prune_agent = RL_Pruner(model=model,
-                                  sample_input=sample_input,
-                                  sample_num=args.sample_num,
-                                  prune_filter_ratio=args.prune_filter_ratio,
-                                  noise_var=args.noise_var)
+                                sample_input=sample_input,
+                                sample_num=args.sample_num,
+                                prune_filter_ratio=args.prune_filter_ratio,
+                                noise_var=args.noise_var)
         logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
 
-        wandb.log({"top1_acc": initial_top1_acc, 
+        wandb.log({"top1_acc": teacher_top1_acc, 
                    "modification_num": prune_agent.modification_num, 
                    "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                    "Para_compression_ratio": Para_compression_ratio}, 
@@ -125,17 +129,18 @@ def main():
     if args.resume:
         torch_resume_random_seed(prev_checkpoint)
         logging.info(f'Resume previous random state')
+        print(f"Resume previous random state")
     else:
         torch_set_random_seed(random_seed)
         logging.info(f'Start with random seed: {random_seed}')
-    
+        print(f"Start with random seed: {random_seed}")
+
     """ begin compressing """
     pruning_epoch = round(args.sparsity * 100)
     with tqdm(total=pruning_epoch, desc=f'Compressing', unit='epoch') as pbar:
-        for _ in range(prev_epoch):
-            pbar.update(1)
+        pbar.update(prev_epoch)
 
-        for epoch in range(1, pruning_epoch + 1):
+        for epoch in range(1 + prev_epoch, pruning_epoch + 1):
             """ get generated model """
             generated_model_with_info, best_Q_value = generate_architecture(model_with_info, 
                                                                             prune_agent)
@@ -161,6 +166,7 @@ def main():
                                                      student_model=generated_model, 
                                                      optimizer=optimizer,
                                                      lr_scheduler_warmup=lr_scheduler_warmup,
+                                                     T=args.KD_temperature,
                                                      soft_loss_weight=1-args.stu_co,
                                                      stu_loss_weight=args.stu_co,
                                                      ft_epoch=ft_epoch)
@@ -182,6 +188,11 @@ def main():
                                        'cur_acc': top1_acc})
                     pbar2.update(1)
 
+            """ Switch teacher if the generated is better """
+            if teacher_top1_acc < best_acc:
+                logging.info(f"Switch teacher to the generated one")
+                teacher_model = model_with_info[0]
+                teacher_top1_acc = best_acc
             
             """ Compute compression results """
             model_FLOPs, model_Params = profile(model=model_with_info[0], 
@@ -215,9 +226,16 @@ def main():
             pbar.update(1)
 
             # save checkpoint
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 checkpoint = {
                     # compression parameter
+                    'loss_function': loss_function,
+                    'train_loader': train_loader.dataset if train_loader is not None else None,
+                    'valid_loader': valid_loader.dataset if valid_loader is not None else None,
+                    'test_loader': test_loader.dataset if test_loader is not None else None,
+                    'train_sampler': train_loader.sampler if train_loader is not None else None,
+                    'valid_sampler': valid_loader.sampler if valid_loader is not None else None,
+                    'test_sampler': test_loader.sampler if test_loader is not None else None,
                     'experiment_id': experiment_id,
                     'epoch': epoch,
                     'prune_agent': prune_agent,
@@ -225,6 +243,7 @@ def main():
                     'original_FLOPs_num': original_FLOPs_num,
                     'Para_compression_ratio': Para_compression_ratio,
                     'FLOPs_compression_ratio': FLOPs_compression_ratio,
+                    'teacher_top1_acc': teacher_top1_acc,
 
                     # random seed parameter
                     'random_seed': random_seed,
@@ -238,8 +257,12 @@ def main():
                     os.makedirs(f"{args.checkpoint_dir}/{epoch}")
                 torch.save(checkpoint, f"{args.checkpoint_dir}/{epoch}/checkpoint.pt")
                 torch.save(model_with_info[0], f"{args.checkpoint_dir}/{epoch}/model.pth")
+                torch.save(teacher_model, f"{args.checkpoint_dir}/{epoch}/teacher.pth")
         
         torch.save(model_with_info[0], f"{args.compressed_pth}")
+        logging.info(f"Compressed model saved at {args.compressed_pth}")
+        print(f"Compressed model saved at {args.compressed_pth}")
+        wandb.finish()
 
 
 @torch.no_grad()
@@ -423,6 +446,8 @@ def get_args():
                         help='initial fine tuning learning rate')
     parser.add_argument('--min_lr', '-mlr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
+    parser.add_argument('--KD_temperature', '-KD_T', type=float, default=settings.T_FT_TEMPERATURE,
+                        help='the tempearature used in knowledge distillation')
     parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
                         help='warmup epoch number for lr scheduler')
     parser.add_argument('--fine_tune_epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
@@ -475,6 +500,9 @@ def check_args(args: argparse.Namespace):
     if args.prune_strategy not in PRUNE_STRATEGY:
         raise ValueError(f"the provided prune_strategy {args.prune_strategy} is not supported, "
                          f"please select one of {PRUNE_STRATEGY}")
+    
+    if args.sparsity >= 1 or args.sparsity < 0:
+        raise ValueError(f"the sparsity of compressed model should be in interval [0, 1]")
 
 
 if __name__ == '__main__':

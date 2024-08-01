@@ -13,6 +13,7 @@ from utils.model_utils import (get_model,
                                NORM_LAYERS,
                                CONV_LAYERS)
 from utils.dataset_utils import (get_dataloader,
+                                 get_dataloader_with_checkpoint,
                                  DATASETS)
 from utils.compression_utils import (RL_Pruner,
                                      PRUNE_STRATEGY)

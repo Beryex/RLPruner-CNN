@@ -1,9 +1,9 @@
 #!/bin/bash
 
-MODEL=vgg16
-DATASET=cifar100
+MODEL=${1}
+DATASET=${2}
 
-SPARSITY=0.80
+SPARSITY=${3}
 
 LOG=log
 CKPT=checkpoint

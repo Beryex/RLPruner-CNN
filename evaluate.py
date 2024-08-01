@@ -31,7 +31,6 @@ def main():
     else:
         random_seed = int(time.time())
         experiment_id = random_seed
-    torch_set_random_seed(random_seed)
     setup_logging(log_dir=args.log_dir,
                   experiment_id=experiment_id, 
                   random_seed=random_seed,
@@ -41,6 +40,10 @@ def main():
                   action='evaluate',
                   use_wandb=False)
     
+    torch_set_random_seed(random_seed)
+    logging.info(f'Start with random seed: {random_seed}')
+    print(f"Start with random seed: {random_seed}")
+    
     pretrained_model = torch.load(f"{args.pretrained_pth}").to(device)
     compressed_model = torch.load(f"{args.compressed_pth}").to(device)
     _, _, test_loader, _, _ = get_dataloader(args.dataset, 
@@ -49,6 +52,7 @@ def main():
     eval_loader = test_loader
 
     logging.info("Start evaluating")
+    print(f"Start evaluating")
     results = {}
     results = evaluate_model_stat(pretrained_model, compressed_model, results)
     results = evaluate_inference(pretrained_model, compressed_model, results)
@@ -189,3 +193,4 @@ def check_args(args: argparse.Namespace):
 
 if __name__ == '__main__':
     main()
+    

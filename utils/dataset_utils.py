@@ -1,8 +1,9 @@
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
-from typing import Tuple
+from typing import Tuple, Dict
 import numpy as np
+import torch
 
 from conf import settings
 from utils import torch_set_random_seed
@@ -55,7 +56,7 @@ def get_dataloader(dataset_name: str,
             mnist_val_loader = None
         else:
             mnist_val_loader = DataLoader(mnist_val_dataset, 
-                                          shuffle=shuffle, 
+                                          shuffle=False, 
                                           num_workers=num_workers, 
                                           batch_size=batch_size, 
                                           pin_memory=pin_memory,
@@ -66,7 +67,7 @@ def get_dataloader(dataset_name: str,
                                                         download=True, 
                                                         transform=transform_test)
         mnist_test_loader = DataLoader(mnist_test_dataset, 
-                                       shuffle=shuffle, 
+                                       shuffle=False, 
                                        num_workers=num_workers, 
                                        batch_size=batch_size, 
                                        pin_memory=pin_memory,
@@ -107,7 +108,7 @@ def get_dataloader(dataset_name: str,
             cifar10_val_loader = None
         else:
             cifar10_val_loader = DataLoader(cifar10_val_dataset, 
-                                            shuffle=shuffle, 
+                                            shuffle=False, 
                                             num_workers=num_workers, 
                                             batch_size=batch_size, 
                                             pin_memory=pin_memory,
@@ -118,7 +119,7 @@ def get_dataloader(dataset_name: str,
                                                             download=True, 
                                                             transform=transform_test)
         cifar10_test_loader = DataLoader(cifar10_test_dataset, 
-                                         shuffle=shuffle, 
+                                         shuffle=False, 
                                          num_workers=num_workers, 
                                          batch_size=batch_size, 
                                          pin_memory=pin_memory,
@@ -159,7 +160,7 @@ def get_dataloader(dataset_name: str,
             cifar100_val_loader = None
         else:
             cifar100_val_loader = DataLoader(cifar100_val_dataset, 
-                                             shuffle=shuffle, 
+                                             shuffle=False, 
                                              num_workers=num_workers, 
                                              batch_size=batch_size, 
                                              pin_memory=pin_memory,
@@ -170,7 +171,7 @@ def get_dataloader(dataset_name: str,
                                                               download=True, 
                                                               transform=transform_test)
         cifar100_test_loader = DataLoader(cifar100_test_dataset, 
-                                          shuffle=shuffle, 
+                                          shuffle=False, 
                                           num_workers=num_workers, 
                                           batch_size=batch_size, 
                                           pin_memory=pin_memory,
@@ -184,3 +185,39 @@ def get_dataloader(dataset_name: str,
 
 def worker_init_fn(worker_id):
     np.random.seed(1 + worker_id)
+
+
+def get_dataloader_with_checkpoint(prev_checkpoint: Dict,
+                                   batch_size: int, 
+                                   num_workers: int,
+                                   pin_memory: bool = True,
+                                   shuffle: bool =True) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """ Resume the dataloader from the checkpoint """
+    train_dataset = prev_checkpoint['train_loader']
+    valid_dataset = prev_checkpoint['valid_loader']
+    test_dataset = prev_checkpoint['test_loader']
+    
+    train_sampler = prev_checkpoint['train_sampler']
+    valid_sampler = prev_checkpoint['valid_sampler']
+    test_sampler = prev_checkpoint['test_sampler']
+    
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=batch_size, 
+                              shuffle=(train_sampler is None and shuffle), 
+                              sampler=train_sampler, 
+                              num_workers=num_workers, 
+                              pin_memory=pin_memory)
+    valid_loader = DataLoader(valid_dataset, 
+                              batch_size=batch_size, 
+                              shuffle=False, 
+                              sampler=valid_sampler, 
+                              num_workers=num_workers, 
+                              pin_memory=pin_memory)
+    test_loader = DataLoader(test_dataset, 
+                             batch_size=batch_size,
+                             shuffle=False, 
+                             sampler=test_sampler, 
+                             num_workers=num_workers, 
+                             pin_memory=pin_memory)
+    
+    return train_loader, valid_loader, test_loader
