@@ -25,6 +25,7 @@ class RL_Pruner():
                  noise_var: float):
         """ Extract prunable layer and layer dependence """
         logging.info(f'Start extracting layers dependency')
+        print(f"Start extracting layers dependency")
         original_inplace_state = {}
         set_inplace_false(model, original_inplace_state)
         prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(model)
@@ -37,6 +38,7 @@ class RL_Pruner():
                                                        prune_distribution, 
                                                        layer_cluster_mask)
         logging.info(f'Complete extracting layers dependency')
+        print(f"Complete extracting layers dependency")
         for i in range(len(prune_distribution)):
             wandb.log({f"prune_distribution_item_{i}": prune_distribution[i]}, 
                        step=0)
@@ -59,10 +61,29 @@ class RL_Pruner():
 
 
     def link_model(self, model_with_info: Tuple) -> None:
-        """ link the model in class with input model with info """
+        """ Link the model in class with input model with info """
         self.model = model_with_info[0]
         self.prunable_layers = model_with_info[1]
         self.next_layers = model_with_info[2]
+    
+
+    def resume_model(self, model: nn.Module, sample_input: Tensor) -> None:
+        """ Resume the model and link it """
+        logging.info(f'Start extracting layers dependency')
+        print(f"Start extracting layers dependency")
+        original_inplace_state = {}
+        set_inplace_false(model, original_inplace_state)
+        _, _, prunable_layers = extract_prunable_layers_info(model)
+        next_layers, _ = extract_prunable_layer_dependence(model, 
+                                                           sample_input, 
+                                                           prunable_layers)
+        assert len(prunable_layers) == len(next_layers) == self.prune_distribution.shape[0]
+        recover_inplace_status(model, original_inplace_state)
+        logging.info(f'Complete extracting layers dependency')
+        print(f"Complete extracting layers dependency")
+
+        resumed_model_with_info = (model, prunable_layers, next_layers)
+        self.link_model(resumed_model_with_info)
     
 
     def get_linked_model(self) -> Tuple:
@@ -281,7 +302,6 @@ class RL_Pruner():
             if isinstance(next_layer, NORM_LAYERS):
                 # case 1: BatchNorm
                 target_bn = next_layer
-                assert 0 <= target_filter_idx + offset < next_layer.num_features
                 with torch.no_grad():
                     kept_indices = [i for i in range(target_bn.num_features) 
                                     if i != target_filter_idx + offset]
@@ -338,7 +358,6 @@ class RL_Pruner():
                 output_area = 1 # default for most CNNs
                 start_index = (target_filter_idx + offset) * output_area ** 2
                 end_index = start_index + output_area ** 2
-                assert 0 <= start_index < end_index < next_layer.in_features
                 with torch.no_grad():
                     next_layer.weight.data = torch.cat([next_layer.weight.data[:, :start_index], 
                                                         next_layer.weight.data[:, end_index:]], 
@@ -379,7 +398,6 @@ class RL_Pruner():
             if isinstance(next_layer, NORM_LAYERS):
                 # case 1: BatchNorm
                 target_bn = next_layer
-                assert 0 <= target_filter_idx + offset < next_layer.num_features
                 with torch.no_grad():
                     kept_indices = [i for i in range(target_bn.num_features) 
                                     if i != target_filter_idx + offset]
@@ -397,7 +415,6 @@ class RL_Pruner():
                 # case 2: Linear
                 start_index = target_filter_idx + offset
                 end_index = start_index + 1
-                assert 0 <= start_index < end_index < next_layer.in_features
                 with torch.no_grad():
                     next_layer.weight.data = torch.cat([next_layer.weight.data[:, :start_index], 
                                                         next_layer.weight.data[:, end_index:]], 

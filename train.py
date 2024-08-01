@@ -38,6 +38,7 @@ def main():
 
     torch_set_random_seed(random_seed)
     logging.info(f'Start with random seed: {random_seed}')
+    print(f"Start with random seed: {random_seed}")
     
     train_loader, _, test_loader, in_channels, num_class = get_dataloader(args.dataset, 
                                                                           batch_size=args.batch_size, 
@@ -50,8 +51,6 @@ def main():
                                                         T_max=args.epoch - args.warmup_epoch - 10, 
                                                         eta_min= args.min_lr,
                                                         last_epoch=-1)
-    iter_per_epoch = len(train_loader)
-    lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * args.warmup_epoch)
     
     best_acc = 0.0
     with tqdm(total=args.epoch, desc=f'Training', unit='epoch') as pbar:
@@ -60,16 +59,14 @@ def main():
                                train_loader, 
                                loss_function, 
                                optimizer, 
-                               lr_scheduler_warmup, 
                                device)
             top1_acc, top5_acc, _ = evaluate(model, 
                                              test_loader, 
                                              loss_function, 
                                              device)
-            logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, '
-                        f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}')
-            wandb.log({"epoch": epoch, "train_loss": train_loss, 
-                    "top1_acc": top1_acc, "top5_acc": top5_acc})
+            
+            for param_group in optimizer.param_groups:
+                lr = param_group['lr']
 
             if epoch > args.warmup_epoch:
                 lr_scheduler.step()
@@ -78,9 +75,18 @@ def main():
                 best_acc = top1_acc
                 torch.save(model, args.output_pth)
             
+            logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, "lr": {lr}'
+                         f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}'
+                         f'Best top1 acc: {best_acc}')
+            wandb.log({"epoch": epoch, "train_loss": train_loss, "lr": lr,
+                       "top1_acc": top1_acc, "top5_acc": top5_acc,
+                       "best top1 acc": best_acc})
+            
             pbar.set_postfix({'Train loss': train_loss, 'Best top1 acc': best_acc, 'Top1 acc': top1_acc})
             pbar.update(1)
     
+    logging.info(f"Pretrained model saved at {args.output_pth}")
+    print(f"Pretrained model saved at {args.output_pth}")
     wandb.finish()
 
 
@@ -88,7 +94,6 @@ def train(model: nn.Module,
           train_loader: DataLoader, 
           loss_function: nn.Module,
           optimizer: optim.Optimizer,
-          lr_scheduler_warmup: WarmUpLR,
           device: str) -> float:
     """ Train model and save using early stop on test dataset """
     model.train()
@@ -103,9 +108,6 @@ def train(model: nn.Module,
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
-
-        if epoch <= args.warmup_epoch:
-            lr_scheduler_warmup.step()
 
     train_loss /= len(train_loader)
     return train_loss
@@ -165,8 +167,6 @@ def get_args():
     
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')
-    parser.add_argument('--model_dir', '-mdir', type=str, default='models', 
-                        help='the directory containing model scripts')
     parser.add_argument('--output_pth', '-opth', type=str, default='pretrained_model', 
                         help='the path to store output model')
 
