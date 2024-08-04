@@ -18,7 +18,7 @@ The current release supports:
 ## Install
 1. Clone the repository and aavigate to the RLPruner working directory
 ```bash 
-git clone https://github.com/Beryex/RLPruner-CNN.git
+git clone https://github.com/Beryex/RLPruner-CNN.git --depth 1
 cd RLPruner-CNN
 ```
 2. Set up environment

@@ -7,10 +7,6 @@ This implementation is based on the PyTorch replication available at:
 https://github.com/weiaicunzai/pytorch-cifar100/
 """
 
-
-import torch
-import torch.nn as nn
-
 import torch
 import torch.nn as nn
 

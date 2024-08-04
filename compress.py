@@ -30,6 +30,10 @@ def main():
     model_name = args.model
     dataset_name = args.dataset
 
+    pretrained_pth = f"{args.pretrained_dir}/{model_name}_{dataset_name}_original.pth"
+    compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{args.sparsity}.pth"
+
+
     """ Setup logging and get model, data loader, loss function """
     if args.resume:
         prev_checkpoint = torch.load(f"{args.checkpoint_dir}/{args.resume_epoch}/checkpoint.pt")
@@ -45,6 +49,7 @@ def main():
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
+                      project_name=args.project_name,
                       use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
         print(f"Resume Logging setup complete for experiment id: {experiment_id}")
@@ -73,11 +78,12 @@ def main():
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
+                      project_name=args.project_name,
                       use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
         print(f"Logging setup complete for experiment id: {experiment_id}")
 
-        model = torch.load(f"{args.pretrained_pth}").to(device)
+        model = torch.load(f"{pretrained_pth}").to(device)
         teacher_model = copy.deepcopy(model).to(device)
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
                                                                        batch_size=args.batch_size, 
@@ -253,15 +259,15 @@ def main():
                     'torch_random_state': torch.get_rng_state(),
                     'cuda_random_state': torch.cuda.get_rng_state_all()
                 }
-                if not os.path.exists(f"{args.checkpoint_dir}/{epoch}"):
-                    os.makedirs(f"{args.checkpoint_dir}/{epoch}")
+                os.makedirs(f"{args.checkpoint_dir}/{epoch}", exist_ok=True)
                 torch.save(checkpoint, f"{args.checkpoint_dir}/{epoch}/checkpoint.pt")
                 torch.save(model_with_info[0], f"{args.checkpoint_dir}/{epoch}/model.pth")
                 torch.save(teacher_model, f"{args.checkpoint_dir}/{epoch}/teacher.pth")
         
-        torch.save(model_with_info[0], f"{args.compressed_pth}")
-        logging.info(f"Compressed model saved at {args.compressed_pth}")
-        print(f"Compressed model saved at {args.compressed_pth}")
+        os.makedirs(f"{args.compressed_dir}", exist_ok=True)
+        torch.save(model_with_info[0], f"{compressed_pth}")
+        logging.info(f"Compressed model saved at {compressed_pth}")
+        print(f"Compressed model saved at {compressed_pth}")
         wandb.finish()
 
 
@@ -469,14 +475,16 @@ def get_args():
     parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
     
+    parser.add_argument('--project_name', '-pn', type=str, default='RLPruner', 
+                        help='the project name of wandb for the expriment')
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')
     parser.add_argument('--checkpoint_dir', '-ckptdir', type=str, default='checkpoint', 
                         help='the directory containing checkpoints')
-    parser.add_argument('--pretrained_pth', '-ppth', type=str, default='pretrained_model', 
-                        help='the path of pretrained model')
-    parser.add_argument('--compressed_pth', '-cpth', type=str, default='compressed_model', 
-                        help='the path of compressed model')
+    parser.add_argument('--pretrained_dir', '-ppth', type=str, default='pretrained_model', 
+                        help='the directory containing pretrained model')
+    parser.add_argument('--compressed_dir', '-cpth', type=str, default='compressed_model', 
+                        help='the directory containing compressed model')
 
     args = parser.parse_args()
     check_args(args)

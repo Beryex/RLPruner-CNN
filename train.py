@@ -1,6 +1,8 @@
 import time
 import argparse
 import torch
+import os
+import copy
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -19,6 +21,8 @@ def main():
     global args
     global epoch
     args = get_args()
+    model_name = args.model
+    dataset_name = args.dataset
 
     if args.random_seed is not None:
         random_seed = args.random_seed
@@ -73,7 +77,7 @@ def main():
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
-                torch.save(model, args.output_pth)
+                best_model = copy.deepcopy(model)
             
             logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, "lr": {lr}'
                          f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}'
@@ -85,6 +89,9 @@ def main():
             pbar.set_postfix({'Train loss': train_loss, 'Best top1 acc': best_acc, 'Top1 acc': top1_acc})
             pbar.update(1)
     
+    os.makedirs(f"{args.output_dir}", exist_ok=True)
+    output_pth = f"{args.output_dir}/{model_name}_{dataset_name}_original.pth"
+    torch.save(best_model, args.output_pth)
     logging.info(f"Pretrained model saved at {args.output_pth}")
     print(f"Pretrained model saved at {args.output_pth}")
     wandb.finish()
@@ -167,8 +174,8 @@ def get_args():
     
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')
-    parser.add_argument('--output_pth', '-opth', type=str, default='pretrained_model', 
-                        help='the path to store output model')
+    parser.add_argument('--output_dir', '-opth', type=str, default='pretrained_model', 
+                        help='the directory to store output model')
 
     args = parser.parse_args()
     check_args(args)

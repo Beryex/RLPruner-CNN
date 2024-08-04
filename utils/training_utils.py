@@ -7,8 +7,6 @@ import logging
 import argparse
 from torch.optim.lr_scheduler import _LRScheduler
 
-from conf import settings
-
 
 def torch_set_random_seed(seed: int) -> None:
     """ Set random seed for reproducible usage """
@@ -40,6 +38,7 @@ def setup_logging(log_dir: str,
                   model_name: str, 
                   dataset_name: str,
                   action: str,
+                  project_name: str = "RLPruner",
                   use_wandb: bool = False) -> None:
     """ Set up wandb, logging """    
     hyperparams_config = {
@@ -49,9 +48,8 @@ def setup_logging(log_dir: str,
         "random_seed": random_seed
     }
     hyperparams_config.update(vars(args))
-    hyperparams_config.update(settings.__dict__)
     wandb.init(
-        project="RLPruner",
+        project=project_name,
         name=f"{action}_{model_name}_on_{dataset_name}_{experiment_id}",
         id=str(experiment_id),
         config=hyperparams_config,
@@ -59,7 +57,7 @@ def setup_logging(log_dir: str,
         mode='online' if use_wandb else 'disabled'
     )
 
-    
+    os.makedirs(f"{log_dir}", exist_ok=True)
     log_filename = f"{log_dir}/log_{action}_{model_name}_{dataset_name}_{experiment_id}.txt"
     logging.basicConfig(level=logging.INFO,
                         format='%(levelname)s - %(message)s',

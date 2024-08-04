@@ -8,15 +8,6 @@ PRETRAINED_MODEL_DIR=pretrained_model
 PRETRAINED_MODEL_PTH=${PRETRAINED_MODEL_DIR}/${MODEL}_${DATASET}_original.pth
 
 
-if [ ! -d "${LOG}" ]; then
-    mkdir -p "${LOG}"
-fi
-
-if [ ! -d "${PRETRAINED_MODEL_DIR}" ]; then
-    mkdir -p "${PRETRAINED_MODEL_DIR}"
-fi
-
-
 python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
-                --output_pth ${PRETRAINED_MODEL_PTH} \
+                --output_dir ${PRETRAINED_MODEL_DIR} \
                 --log_dir ${LOG} --use_wandb
