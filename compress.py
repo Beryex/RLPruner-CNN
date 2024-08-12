@@ -154,30 +154,30 @@ def main():
             best_acc, _, _ = evaluate(generated_model)
             model_with_info = copy.deepcopy(generated_model_with_info)
 
-            """ fine tuning generated model """
+            """ post training generated model """
             optimizer = optim.SGD(generated_model.parameters(), 
                                   lr=args.lr, 
                                   momentum=0.9, 
                                   weight_decay=5e-4)
             lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                                args.fine_tune_epoch - 5, 
+                                                                args.post_training_epoch - 5, 
                                                                 eta_min=args.min_lr,
                                                                 last_epoch=-1)
             iter_per_epoch = len(train_loader)
             lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * args.warmup_epoch)
             
-            with tqdm(total=args.fine_tune_epoch, desc=f'Fine tuning', unit='epoch', leave=False) as pbar2:
-                for ft_epoch in range(1, args.fine_tune_epoch + 1):
-                    train_loss = fine_tuning_with_KD(teacher_model=teacher_model, 
-                                                     student_model=generated_model, 
-                                                     optimizer=optimizer,
-                                                     lr_scheduler_warmup=lr_scheduler_warmup,
-                                                     T=args.KD_temperature,
-                                                     soft_loss_weight=1-args.stu_co,
-                                                     stu_loss_weight=args.stu_co,
-                                                     ft_epoch=ft_epoch)
+            with tqdm(total=args.post_training_epoch, desc=f'Post training', unit='epoch', leave=False) as pbar2:
+                for ft_epoch in range(1, args.post_training_epoch + 1):
+                    train_loss = post_training_with_KD(teacher_model=teacher_model, 
+                                                       student_model=generated_model, 
+                                                       optimizer=optimizer,
+                                                       lr_scheduler_warmup=lr_scheduler_warmup,
+                                                       T=args.KD_temperature,
+                                                       soft_loss_weight=1-args.stu_co,
+                                                       stu_loss_weight=args.stu_co,
+                                                       ft_epoch=ft_epoch)
                     top1_acc, top5_acc, _ = evaluate(generated_model)
-                    logging.info(f"epoch: {ft_epoch}/{args.fine_tune_epoch}, "
+                    logging.info(f"epoch: {ft_epoch}/{args.post_training_epoch}, "
                                  f"train_Loss: {train_loss}, "
                                  f"top1_acc: {top1_acc}, "
                                  f"top5_acc: {top5_acc}")
@@ -378,15 +378,15 @@ def sample_trajectory(cur_step: int,
                 prune_agent.model_info_list[min_idx] = generated_model_with_info
 
 
-def fine_tuning_with_KD(teacher_model: nn.Module,
-                        student_model: nn.Module,
-                        optimizer: optim.Optimizer, 
-                        lr_scheduler_warmup: WarmUpLR,
-                        ft_epoch: int,
-                        T: float = 2,
-                        soft_loss_weight: float = 0.75, 
-                        stu_loss_weight: float = 0.25) -> float:
-    """ fine tuning generated model with knowledge distillation with original model as teach """
+def post_training_with_KD(teacher_model: nn.Module,
+                          student_model: nn.Module,
+                          optimizer: optim.Optimizer, 
+                          lr_scheduler_warmup: WarmUpLR,
+                          ft_epoch: int,
+                          T: float = 2,
+                          soft_loss_weight: float = 0.75, 
+                          stu_loss_weight: float = 0.25) -> float:
+    """ Post training generated model with knowledge distillation with original model as teach """
     teacher_model.eval()
     student_model.train()
     train_loss = 0.0
@@ -448,17 +448,17 @@ def get_args():
                         help='enable Proximal Policy Optimization')
     parser.add_argument('--ppo_clip', '-ppoc', type=float, default=settings.RL_PPO_CLIP, 
                         help='the clip value for PPO')
-    parser.add_argument('--lr', '-lr', type=float, default=settings.T_FT_LR_SCHEDULER_INITIAL_LR,
-                        help='initial fine tuning learning rate')
+    parser.add_argument('--lr', '-lr', type=float, default=settings.T_PT_LR_SCHEDULER_INITIAL_LR,
+                        help='initial post training learning rate')
     parser.add_argument('--min_lr', '-mlr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--KD_temperature', '-KD_T', type=float, default=settings.T_FT_TEMPERATURE,
+    parser.add_argument('--KD_temperature', '-KD_T', type=float, default=settings.T_PT_TEMPERATURE,
                         help='the tempearature used in knowledge distillation')
-    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
+    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_PT_WARMUP_EPOCH, 
                         help='warmup epoch number for lr scheduler')
-    parser.add_argument('--fine_tune_epoch', '-fte', type=int, default=settings.T_FT_EPOCH,
-                        help='fine tuning epoch for generated model')
-    parser.add_argument('--stu_co', '-sc', type=float, default=settings.T_FT_STU_CO,
+    parser.add_argument('--post_training_epoch', '-pte', type=int, default=settings.T_PT_EPOCH,
+                        help='post training epoch for generated model')
+    parser.add_argument('--stu_co', '-sc', type=float, default=settings.T_PT_STU_CO,
                         help='the student loss coefficient in knowledge distillation')
     parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')

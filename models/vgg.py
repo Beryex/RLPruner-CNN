@@ -20,7 +20,7 @@ cfg = {
 
 class VGG(nn.Module):
 
-    def __init__(self, features, in_channels=3, num_class=100):
+    def __init__(self, features, num_class=100):
         super().__init__()
         self.features = features
 

@@ -4,8 +4,8 @@ import sys
 import argparse
 
 
-# Usage: python hyperparameter_search.py -hp "stu_co,KD_temperature,lr,fine_tune_epoch,warmup_epoch" \
-#                                        -v "0;0.3;0.6;0.9,0.5;1;2,5e-2;1e-2;5e-3,10;15;20,2;5;8" \
+# Usage: python hyperparameter_search.py -hp "stu_co,KD_temperature,lr,post_training_epoch,warmup_epoch" \
+#                                        -v "0;0.3;0.6;0.9,2,5e-3;1e-3,20,5" \
 #                                        -n fine_tuning \
 # Usage: python hyperparameter_search.py -hp "sample_num,sample_step,lr_epoch" \
 #                                        -v "5;10;15,1;2,5;10;15" \
@@ -31,7 +31,7 @@ COMPRESSED_MODEL_PTH = f"{COMPRESSED_MODEL_DIR}/{MODEL}_{DATASET}_{SPARSITY}.pth
 SUPPORT_HYPERPARAMETER = ["noise_var", "ppo_clip", "step_length",
                           "sample_num", "sample_step", "lr_epoch",
                           "greedy_epsilon", "prune_strategy",
-                          "stu_co", "KD_temperature", "lr", "fine_tune_epoch", "warmup_epoch"]
+                          "stu_co", "KD_temperature", "lr", "post_training_epoch", "warmup_epoch"]
 
 def main():
     global args
