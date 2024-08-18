@@ -13,7 +13,7 @@ from typing import Tuple
 
 from conf import settings
 from utils import (get_model, get_dataloader, setup_logging, torch_set_random_seed, 
-                   WarmUpLR, MODELS, DATASETS)
+                   MODELS, DATASETS)
 
 
 def main():
@@ -52,7 +52,7 @@ def main():
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                        T_max=args.epoch - args.warmup_epoch - 10, 
+                                                        T_max=args.epoch - 10, 
                                                         eta_min= args.min_lr,
                                                         last_epoch=-1)
     
@@ -72,15 +72,14 @@ def main():
             for param_group in optimizer.param_groups:
                 lr = param_group['lr']
 
-            if epoch > args.warmup_epoch:
-                lr_scheduler.step()
+            lr_scheduler.step()
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
                 best_model = copy.deepcopy(model)
             
-            logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, "lr": {lr}'
-                         f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}'
+            logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, "lr": {lr}, '
+                         f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}, '
                          f'Best top1 acc: {best_acc}')
             wandb.log({"epoch": epoch, "train_loss": train_loss, "lr": lr,
                        "top1_acc": top1_acc, "top5_acc": top5_acc,
@@ -91,9 +90,9 @@ def main():
     
     os.makedirs(f"{args.output_dir}", exist_ok=True)
     output_pth = f"{args.output_dir}/{model_name}_{dataset_name}_original.pth"
-    torch.save(best_model, args.output_pth)
-    logging.info(f"Pretrained model saved at {args.output_pth}")
-    print(f"Pretrained model saved at {args.output_pth}")
+    torch.save(best_model, output_pth)
+    logging.info(f"Pretrained model saved at {output_pth}")
+    print(f"Pretrained model saved at {output_pth}")
     wandb.finish()
 
 
@@ -157,8 +156,6 @@ def get_args():
                         help='initial learning rate')
     parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
-                        help='warmup epoch number for lr scheduler')
     parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
     parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 

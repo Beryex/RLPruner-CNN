@@ -25,7 +25,7 @@ python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
 python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
                    --sparsity ${SPARSITY} --prune_strategy variance \
                    --greedy_epsilon 0 --ppo \
-                   --noise_var 0.04 --ppo_clip 0.2 \
+                   --noise_var 0.02 --ppo_clip 0.35 \
                    --pretrained_dir ${PRETRAINED_MODEL_DIR} \
                    --compressed_dir ${COMPRESSED_MODEL_DIR} \
                    --checkpoint_dir ${CKPT_DIR} \
