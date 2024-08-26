@@ -12,6 +12,8 @@ import numpy as np
 from typing import Tuple, List
 import wandb
 import logging
+from torch.utils.data import DataLoader
+import gc
 
 from conf import settings
 from utils import (setup_logging, get_dataloader, get_dataloader_with_checkpoint,
@@ -23,8 +25,11 @@ def main():
     global args
     global device
     global train_loader
-    global eval_loader
+    global valid_loader
+    global test_loader
     global loss_function
+    global ft_epoch
+    global warmup_epoch
     args = get_args()
     device = args.device
     model_name = args.model
@@ -59,8 +64,8 @@ def main():
         train_loader, valid_loader, test_loader = get_dataloader_with_checkpoint(prev_checkpoint, 
                                                                                  batch_size=args.batch_size, 
                                                                                  num_workers=args.num_worker)
-        eval_loader = test_loader
         loss_function = prev_checkpoint['loss_function']
+        warmup_epoch = prev_checkpoint['warmup_epoch']
     else:
         if args.random_seed is not None:
             random_seed = args.random_seed
@@ -88,8 +93,8 @@ def main():
         train_loader, valid_loader, test_loader, _, _ = get_dataloader(args.dataset, 
                                                                        batch_size=args.batch_size, 
                                                                        num_workers=args.num_worker)
-        eval_loader = test_loader
         loss_function = nn.CrossEntropyLoss()
+        warmup_epoch = int(args.post_training_epoch * args.warmup_ratio)
     
     """ get compression data """
     if dataset_name == 'mnist':
@@ -110,7 +115,7 @@ def main():
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
 
-        teacher_top1_acc, _, _ = evaluate(model)
+        teacher_top1_acc, _, _ = evaluate(model, test_loader)
 
     """ Initialize prune agent to be RL_Pruner """
     if args.resume:
@@ -143,6 +148,7 @@ def main():
 
     """ begin compressing """
     pruning_epoch = round(args.sparsity * 100)
+    prev_top1_acc = teacher_top1_acc
     with tqdm(total=pruning_epoch, desc=f'Compressing', unit='epoch') as pbar:
         pbar.update(prev_epoch)
 
@@ -150,8 +156,18 @@ def main():
             """ get generated model """
             generated_model_with_info, best_Q_value = generate_architecture(model_with_info, 
                                                                             prune_agent)
-            generated_model = generated_model_with_info[0]
-            best_acc, _, _ = evaluate(generated_model)
+            generated_model = generated_model_with_info[0].to(device)
+            cur_top1_acc, _, _ = evaluate(generated_model, test_loader)
+            if (prev_top1_acc - cur_top1_acc) / prev_top1_acc > 0.1:
+                """ Reinitialize prune distribution to be uniform if top1 acc drops much """
+                prune_agent.clear_cache()
+                prune_agent.reinitialize_PD()
+                logging.info(f"Reinitialized prune probability distribution: {prune_agent.prune_distribution}")
+                print(f"Reinitialized prune probability distribution to be uniform as there is sudden performance drop")
+                generated_model_with_info, best_Q_value = generate_architecture(model_with_info, 
+                                                                                prune_agent)
+                generated_model = generated_model_with_info[0].to(device)
+            prev_top1_acc = cur_top1_acc
             model_with_info = copy.deepcopy(generated_model_with_info)
 
             """ post training generated model """
@@ -160,12 +176,12 @@ def main():
                                   momentum=0.9, 
                                   weight_decay=5e-4)
             lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                                args.post_training_epoch - 5, 
+                                                                args.post_training_epoch - warmup_epoch, 
                                                                 eta_min=args.min_lr,
                                                                 last_epoch=-1)
-            iter_per_epoch = len(train_loader)
-            lr_scheduler_warmup = WarmUpLR(optimizer, iter_per_epoch * args.warmup_epoch)
+            lr_scheduler_warmup = WarmUpLR(optimizer, warmup_epoch * len(train_loader))
             
+            best_acc = cur_top1_acc
             with tqdm(total=args.post_training_epoch, desc=f'Post training', unit='epoch', leave=False) as pbar2:
                 for ft_epoch in range(1, args.post_training_epoch + 1):
                     train_loss = post_training_with_KD(teacher_model=teacher_model, 
@@ -174,15 +190,14 @@ def main():
                                                        lr_scheduler_warmup=lr_scheduler_warmup,
                                                        T=args.KD_temperature,
                                                        soft_loss_weight=1-args.stu_co,
-                                                       stu_loss_weight=args.stu_co,
-                                                       ft_epoch=ft_epoch)
-                    top1_acc, top5_acc, _ = evaluate(generated_model)
+                                                       stu_loss_weight=args.stu_co)
+                    top1_acc, top5_acc, _ = evaluate(generated_model, test_loader)
                     logging.info(f"epoch: {ft_epoch}/{args.post_training_epoch}, "
                                  f"train_Loss: {train_loss}, "
                                  f"top1_acc: {top1_acc}, "
                                  f"top5_acc: {top5_acc}")
                     
-                    if ft_epoch > args.warmup_epoch:
+                    if ft_epoch > warmup_epoch:
                         lr_scheduler.step()
 
                     if best_acc < top1_acc:
@@ -193,6 +208,10 @@ def main():
                                        'Best_acc': best_acc, 
                                        'cur_acc': top1_acc})
                     pbar2.update(1)
+            del optimizer
+            del lr_scheduler
+            del lr_scheduler_warmup
+            del generated_model_with_info
 
             """ Switch teacher if the generated is better """
             if teacher_top1_acc < best_acc:
@@ -215,7 +234,7 @@ def main():
                        step=epoch)
             for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
-                        step=epoch)
+                           step=epoch)
             logging.info(f'Epoch: {epoch}/{pruning_epoch}, ' 
                          f'top1_acc: {best_acc}, '
                          f'best_Q_value: {best_Q_value}, '
@@ -224,12 +243,6 @@ def main():
                          f'Parameter number {Para_compression_ratio}')
             
             prune_agent.clear_cache()
-
-            pbar.set_postfix({'Para': Para_compression_ratio, 
-                                'FLOPs': FLOPs_compression_ratio, 
-                                'Q_value': best_Q_value,
-                                'Top1_acc': best_acc})
-            pbar.update(1)
 
             # save checkpoint
             if epoch % 5 == 0:
@@ -250,6 +263,7 @@ def main():
                     'Para_compression_ratio': Para_compression_ratio,
                     'FLOPs_compression_ratio': FLOPs_compression_ratio,
                     'teacher_top1_acc': teacher_top1_acc,
+                    'warmup_epoch': warmup_epoch,
 
                     # random seed parameter
                     'random_seed': random_seed,
@@ -263,6 +277,14 @@ def main():
                 torch.save(checkpoint, f"{args.checkpoint_dir}/{epoch}/checkpoint.pt")
                 torch.save(model_with_info[0], f"{args.checkpoint_dir}/{epoch}/model.pth")
                 torch.save(teacher_model, f"{args.checkpoint_dir}/{epoch}/teacher.pth")
+                del checkpoint
+                gc.collect()
+
+            pbar.set_postfix({'Para': Para_compression_ratio, 
+                                'FLOPs': FLOPs_compression_ratio, 
+                                'Q_value': best_Q_value,
+                                'Top1_acc': best_acc})
+            pbar.update(1)
         
         os.makedirs(f"{args.compressed_dir}", exist_ok=True)
         torch.save(model_with_info[0], f"{compressed_pth}")
@@ -272,7 +294,7 @@ def main():
 
 
 @torch.no_grad()
-def evaluate(model: nn.Module):
+def evaluate(model: nn.Module, eval_loader: DataLoader):
     """ Evaluate model on eval_loader """
     model.eval()
     correct_1 = 0.0
@@ -307,24 +329,21 @@ def generate_architecture(original_model_with_info: Tuple,
                               prune_agent,
                               Q_value_dict)
             cur_Q_value = torch.max(Q_value_dict[0]).item()
-            logging.info(f'Generated model Q value List: {Q_value_dict[0]}')
-            logging.info(f'Current new model Q value cache: {prune_agent.ReplayBuffer[:, 0]}')
-            logging.info(f'Current prune probability distribution cache: {prune_agent.ReplayBuffer[:, 1:]}')
-            logging.info(f'Q value max: {best_Q_value}')
-            logging.info(f'Current Q value: {cur_Q_value}')
+            logging.info(f'RL epoch {rl_epoch} Q value max: {best_Q_value}')
+            logging.info(f'RL epoch {rl_epoch} Q value: {cur_Q_value}')
             # only update distribution when sampled trajectory is better
             if cur_Q_value > best_Q_value:
                 best_Q_value = cur_Q_value
                 prune_distribution_change = prune_agent.update_prune_distribution(args.step_length,
                                                                                   args.ppo_clip,
                                                                                   args.ppo)
-                logging.info(f"current prune probability distribution change: {prune_distribution_change}")
-                logging.info(f"current prune probability distribution: {prune_agent.prune_distribution}")
+                logging.info(f"RL epoch {rl_epoch} prune probability distribution change: {prune_distribution_change}")
+                logging.info(f"RL epoch {rl_epoch} prune probability distribution: {prune_agent.prune_distribution}")
 
             pbar.set_postfix({'Best Q value': best_Q_value, 
                               'Q value': cur_Q_value})
             pbar.update(1)
-    
+
     # use epsilon-greedy exploration strategy
     if torch.rand(1).item() < args.greedy_epsilon:
         best_model_index = torch.randint(0, args.sample_num, (1,)).item()
@@ -351,14 +370,15 @@ def sample_trajectory(cur_step: int,
     for model_id in range(cur_generate_num):
         generated_model_with_info = copy.deepcopy(original_model_with_info)
         generated_model, generated_prunable_layers, generated_next_layers = generated_model_with_info
+        generated_model.to(device)
         
         """ Link the generated model and prune it """
         prune_agent.link_model(generated_model_with_info)
-        prune_distribution_action = prune_agent.prune_architecture(eval_loader,
+        prune_distribution_action = prune_agent.prune_architecture(test_loader,
                                                                    args.prune_strategy)
 
         # evaluate generated architecture
-        top1_acc, _, _ = evaluate(generated_model)
+        top1_acc, _, _ = evaluate(generated_model, test_loader)
         Q_value_dict[cur_step][model_id] = top1_acc
     
         sample_trajectory(cur_step=cur_step + 1, 
@@ -382,7 +402,6 @@ def post_training_with_KD(teacher_model: nn.Module,
                           student_model: nn.Module,
                           optimizer: optim.Optimizer, 
                           lr_scheduler_warmup: WarmUpLR,
-                          ft_epoch: int,
                           T: float = 2,
                           soft_loss_weight: float = 0.75, 
                           stu_loss_weight: float = 0.25) -> float:
@@ -411,7 +430,7 @@ def post_training_with_KD(teacher_model: nn.Module,
         optimizer.step()
         train_loss += loss.item()
 
-        if ft_epoch <= args.warmup_epoch:
+        if ft_epoch <= warmup_epoch:
             lr_scheduler_warmup.step()
 
     train_loss /= len(train_loader)
@@ -434,9 +453,9 @@ def get_args():
                         help='variance when generating new prune distribution')
     parser.add_argument('--lr_epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
                         help='max epoch for reinforcement learning sampling epoch')
-    parser.add_argument('--sample_step', '-ss', type=int, default=settings.RL_MAX_SAMPLE_STEP, 
+    parser.add_argument('--sample_step', '-ss', type=int, default=settings.RL_SAMPLE_STEP, 
                         help='the sample step of prune distribution')
-    parser.add_argument('--sample_num', '-sn', type=int, default=settings.RL_MAX_SAMPLE_NUM, 
+    parser.add_argument('--sample_num', '-sn', type=int, default=settings.RL_SAMPLE_NUM, 
                         help='the sample number of prune distribution')
     parser.add_argument('--discount_factor', '-df', type=float, default=settings.RL_DISCOUNT_FACTOR, 
                         help='the discount factor for multi sample step')
@@ -454,8 +473,8 @@ def get_args():
                         help='minimal learning rate')
     parser.add_argument('--KD_temperature', '-KD_T', type=float, default=settings.T_PT_TEMPERATURE,
                         help='the tempearature used in knowledge distillation')
-    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_PT_WARMUP_EPOCH, 
-                        help='warmup epoch number for lr scheduler')
+    parser.add_argument('--warmup_ratio', '-wr', type=int, default=settings.T_WARMUP_RATIO, 
+                        help='the ratio of warmup epoch number over total epoch number for lr scheduler')
     parser.add_argument('--post_training_epoch', '-pte', type=int, default=settings.T_PT_EPOCH,
                         help='post training epoch for generated model')
     parser.add_argument('--stu_co', '-sc', type=float, default=settings.T_PT_STU_CO,

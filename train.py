@@ -13,13 +13,14 @@ from typing import Tuple
 
 from conf import settings
 from utils import (get_model, get_dataloader, setup_logging, torch_set_random_seed, 
-                   MODELS, DATASETS)
+                   WarmUpLR, MODELS, DATASETS)
 
 
 def main():
     """ Train model and save model using early stop on test dataset """
     global args
     global epoch
+    global warmup_epoch
     args = get_args()
     model_name = args.model
     dataset_name = args.dataset
@@ -50,11 +51,14 @@ def main():
     model = get_model(args.model, in_channels, num_class).to(device)
 
     loss_function = nn.CrossEntropyLoss()
+    warmup_epoch = int(args.epoch * args.warmup_ratio)
+    
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                        T_max=args.epoch - 10, 
+                                                        T_max=args.epoch - warmup_epoch, 
                                                         eta_min= args.min_lr,
                                                         last_epoch=-1)
+    lr_scheduler_warmup = WarmUpLR(optimizer, warmup_epoch * len(train_loader))
     
     best_acc = 0.0
     with tqdm(total=args.epoch, desc=f'Training', unit='epoch') as pbar:
@@ -62,7 +66,8 @@ def main():
             train_loss = train(model, 
                                train_loader, 
                                loss_function, 
-                               optimizer, 
+                               optimizer,
+                               lr_scheduler_warmup,
                                device)
             top1_acc, top5_acc, _ = evaluate(model, 
                                              test_loader, 
@@ -72,7 +77,8 @@ def main():
             for param_group in optimizer.param_groups:
                 lr = param_group['lr']
 
-            lr_scheduler.step()
+            if epoch > warmup_epoch:
+                lr_scheduler.step()
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
@@ -100,6 +106,7 @@ def train(model: nn.Module,
           train_loader: DataLoader, 
           loss_function: nn.Module,
           optimizer: optim.Optimizer,
+          lr_scheduler_warmup: WarmUpLR,
           device: str) -> float:
     """ Train model and save using early stop on test dataset """
     model.train()
@@ -114,6 +121,9 @@ def train(model: nn.Module,
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
+
+        if epoch <= warmup_epoch:
+            lr_scheduler_warmup.step()
 
     train_loss /= len(train_loader)
     return train_loss
@@ -162,6 +172,8 @@ def get_args():
                         help='number of workers for dataloader')
     parser.add_argument('--epoch', '-e', type=int, default=settings.T_EPOCH, 
                         help='total epoch to train')
+    parser.add_argument('--warmup_ratio', '-wr', type=int, default=settings.T_WARMUP_RATIO, 
+                        help='the ratio of warmup epoch number over total epoch number for lr scheduler')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
     parser.add_argument('--random_seed', '-rs', type=int, default=None, 

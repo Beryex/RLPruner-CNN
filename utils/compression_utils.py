@@ -67,6 +67,19 @@ class RL_Pruner():
         self.next_layers = model_with_info[2]
     
 
+    def reinitialize_PD(self) -> None:
+        """ Reinitialize prune distribution to be uniform """
+        for idx, layer in enumerate(self.prunable_layers):
+            if isinstance(layer, CONV_LAYERS):
+                self.prune_distribution[idx] = layer.out_channels
+            elif isinstance(layer, nn.Linear):
+                self.prune_distribution[idx] = layer.out_features
+        self.prune_distribution /= torch.sum(self.prune_distribution)
+        self.prune_distribution = adjust_prune_distribution(self.prunable_layers,
+                                                            self.prune_distribution, 
+                                                            self.layer_cluster_mask)
+    
+
     def resume_model(self, model: nn.Module, sample_input: Tensor) -> None:
         """ Resume the model and link it """
         logging.info(f'Start extracting layers dependency')
@@ -93,7 +106,7 @@ class RL_Pruner():
 
 
     def clear_cache(self) -> None:
-        """ clear the ReplayBuffer and model_info_list if generated model is better """
+        """ Clear the ReplayBuffer and model_info_list """
         self.ReplayBuffer.zero_()
         self.model_info_list = [None] * self.sample_num
 
