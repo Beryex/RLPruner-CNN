@@ -25,12 +25,9 @@ def main():
     model_name = args.model
     dataset_name = args.dataset
 
-    if args.random_seed is not None:
-        random_seed = args.random_seed
-        experiment_id = int(time.time())
-    else:
-        random_seed = int(time.time())
-        experiment_id = random_seed
+    random_seed = args.random_seed
+    experiment_id = int(time.time())
+    
     device = args.device
     setup_logging(log_dir=args.log_dir,
                   experiment_id=experiment_id, 
@@ -45,10 +42,10 @@ def main():
     logging.info(f'Start with random seed: {random_seed}')
     print(f"Start with random seed: {random_seed}")
     
-    train_loader, _, test_loader, in_channels, num_class = get_dataloader(args.dataset, 
-                                                                          batch_size=args.batch_size, 
-                                                                          num_workers=args.num_worker)
-    model = get_model(args.model, in_channels, num_class).to(device)
+    train_loader, _, test_loader, num_classes = get_dataloader(args.dataset, 
+                                                             batch_size=args.batch_size, 
+                                                             num_workers=args.num_worker)
+    model = get_model(args.model, num_classes).to(device)
 
     loss_function = nn.CrossEntropyLoss()
     warmup_epoch = int(args.epoch * args.warmup_ratio)
@@ -117,6 +114,8 @@ def train(model: nn.Module,
 
         optimizer.zero_grad()
         outputs = model(images)
+        if isinstance(outputs, tuple):
+            outputs = outputs[0]
         loss = loss_function(outputs, labels)
         loss.backward()
         optimizer.step()
@@ -144,6 +143,8 @@ def evaluate(model: nn.Module,
         labels = labels.to(device)
         
         outputs = model(images)
+        if isinstance(outputs, tuple):
+            outputs = outputs[0]
         eval_loss += loss_function(outputs, labels).item()
         _, preds = outputs.topk(5, 1, largest=True, sorted=True)
         correct_1 += (preds[:, :1] == labels.unsqueeze(1)).sum().item()
@@ -176,8 +177,8 @@ def get_args():
                         help='the ratio of warmup epoch number over total epoch number for lr scheduler')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
-                        help='the random seed for the current new compression')
+    parser.add_argument('--random_seed', '-rs', type=int, default=1, 
+                        help='the random seed for the training')
     parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
     

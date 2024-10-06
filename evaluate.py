@@ -25,12 +25,9 @@ def main():
     dataset_name = args.dataset
 
     """ Setup logging and get model, dataloader """
-    if args.random_seed is not None:
-        random_seed = args.random_seed
-        experiment_id = int(time.time())
-    else:
-        random_seed = int(time.time())
-        experiment_id = random_seed
+    random_seed = args.random_seed
+    experiment_id = int(time.time())
+    
     setup_logging(log_dir=args.log_dir,
                   experiment_id=experiment_id, 
                   random_seed=random_seed,
@@ -46,9 +43,9 @@ def main():
     
     pretrained_model = torch.load(f"{args.pretrained_pth}").to(device)
     compressed_model = torch.load(f"{args.compressed_pth}").to(device)
-    _, _, test_loader, _, _ = get_dataloader(args.dataset, 
-                                             batch_size=args.batch_size, 
-                                             num_workers=args.num_worker)
+    _, _, test_loader, _ = get_dataloader(args.dataset, 
+                                          batch_size=args.batch_size, 
+                                          num_workers=args.num_worker)
     eval_loader = test_loader
 
     logging.info("Start evaluating")
@@ -56,7 +53,7 @@ def main():
     results = {}
     results = evaluate_model_stat(pretrained_model, compressed_model, results)
     results = evaluate_inference(pretrained_model, compressed_model, results)
-
+    print(compressed_model)
     results_table = PrettyTable()
     results_table.field_names = ["Metrics", 
                                  f"Pretrained {model_name}", 
@@ -127,12 +124,16 @@ def evaluate_inference(pretrained_model: nn.Module,
         labels = labels.to(device)
           
         outputs_pre = pretrained_model(images)
+        if isinstance(outputs_pre, tuple):
+            outputs_pre = outputs_pre[0]
         _, preds_pre = outputs_pre.topk(5, 1, largest=True, sorted=True)
         correct_1_pre += (preds_pre[:, :1] == labels.unsqueeze(1)).sum().item()
         top5_correct_pre = labels.view(-1, 1).expand_as(preds_pre) == preds_pre
         correct_5_pre += top5_correct_pre.any(dim=1).sum().item()
 
         outputs_com = compressed_model(images)
+        if isinstance(outputs_com, tuple):
+            outputs_com = outputs_com[0]
         _, preds_com = outputs_com.topk(5, 1, largest=True, sorted=True)
         correct_1_com += (preds_com[:, :1] == labels.unsqueeze(1)).sum().item()
         top5_correct_com = labels.view(-1, 1).expand_as(preds_com) == preds_com
@@ -165,8 +166,8 @@ def get_args():
                         help='number of workers for dataloader')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
-                        help='the random seed for the current new compression')
+    parser.add_argument('--random_seed', '-rs', type=int, default=1, 
+                        help='the random seed for the evaluation')
     
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')

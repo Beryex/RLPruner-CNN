@@ -23,7 +23,7 @@ python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
 
 # Step 2: Compress trained model
 python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
-                   --sparsity ${SPARSITY} --prune_strategy variance --ppo \
+                   --sparsity ${SPARSITY} --prune_strategy taylor --ppo \
                    --pretrained_dir ${PRETRAINED_MODEL_DIR} \
                    --compressed_dir ${COMPRESSED_MODEL_DIR} \
                    --checkpoint_dir ${CKPT_DIR} \

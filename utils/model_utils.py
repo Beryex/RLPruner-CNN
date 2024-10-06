@@ -15,51 +15,74 @@ CONV_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d,
 MODELS = ["vgg11", "vgg13", "vgg16", "vgg19",
           "googlenet", 
           "resnet18", "resnet34", "resnet50", "resnet101", "resnet152",
+          "resnet8", "resnet14", "resnet20", "resnet32", "resnet44", "resnet56", "resnet110",
           "MobileNetV3_Small", "MobileNetV3_Large"]
 
 # Define tensor comparision threshold for torch.allclose
 # This is necessary because of tensor computation overflow
-TENSOR_DIFFERENCE_THRESHOLD = 1e-3  # this seems too large, but necessary for some case overflow
+TENSOR_DIFFERENCE_THRESHOLD = 1e-2  # this seems too large, but necessary for some case overflow
 
 
-def get_model(model_name: str, in_channels: int, num_class: int) -> nn.Module:
+def get_model(model_name: str, num_classes: int) -> nn.Module:
     """ Retrieve a specific network model based on the given specifications """
+    in_channels = 3
     if model_name == 'vgg11':
         from models.vgg import vgg11
-        return vgg11(in_channels, num_class)
+        return vgg11(in_channels, num_classes)
     elif model_name == 'vgg13':
         from models.vgg import vgg13
-        return vgg13(in_channels, num_class)
+        return vgg13(in_channels, num_classes)
     elif model_name == 'vgg16':
         from models.vgg import vgg16
-        return vgg16(in_channels, num_class)
+        return vgg16(in_channels, num_classes)
     elif model_name == 'vgg19':
         from models.vgg import vgg19
-        return vgg19(in_channels, num_class)
+        return vgg19(in_channels, num_classes)
     elif model_name == 'googlenet':
         from models.googlenet import GoogleNet
-        return GoogleNet(in_channels, num_class)
+        return GoogleNet(in_channels, num_classes)
     elif model_name == 'resnet18':
         from models.resnet import resnet18
-        return resnet18(in_channels, num_class)
+        return resnet18(in_channels, num_classes)
     elif model_name == 'resnet34':
         from models.resnet import resnet34
-        return resnet34(in_channels, num_class)
+        return resnet34(in_channels, num_classes)
     elif model_name == 'resnet50':
         from models.resnet import resnet50
-        return resnet50(in_channels, num_class)
+        return resnet50(in_channels, num_classes)
     elif model_name == 'resnet101':
         from models.resnet import resnet101
-        return resnet101(in_channels, num_class)
+        return resnet101(in_channels, num_classes)
     elif model_name == 'resnet152':
         from models.resnet import resnet152
-        return resnet152(in_channels, num_class)
+        return resnet152(in_channels, num_classes)
+    elif model_name == 'resnet8':
+        from models.resnet_tiny import resnet8
+        return resnet8(in_channels, num_classes)
+    elif model_name == 'resnet14':
+        from models.resnet_tiny import resnet14
+        return resnet14(in_channels, num_classes)
+    elif model_name == 'resnet20':
+        from models.resnet_tiny import resnet20
+        return resnet20(in_channels, num_classes)
+    elif model_name == 'resnet32':
+        from models.resnet_tiny import resnet32
+        return resnet32(in_channels, num_classes)
+    elif model_name == 'resnet44':
+        from models.resnet_tiny import resnet44
+        return resnet44(in_channels, num_classes)
+    elif model_name == 'resnet56':
+        from models.resnet_tiny import resnet56
+        return resnet56(in_channels, num_classes)
+    elif model_name == 'resnet110':
+        from models.resnet_tiny import resnet110
+        return resnet110(in_channels, num_classes)
     elif model_name == 'MobileNetV3_Small':
         from models.mobilenetv3 import MobileNetV3_Small
-        return MobileNetV3_Small(in_channels, num_class)
+        return MobileNetV3_Small(in_channels, num_classes)
     elif model_name == 'MobileNetV3_Large':
         from models.mobilenetv3 import MobileNetV3_Large
-        return MobileNetV3_Large(in_channels, num_class)
+        return MobileNetV3_Large(in_channels, num_classes)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
@@ -448,7 +471,7 @@ def check_tensor_in_cluster(input_tensor: Tensor,
 def adjust_prune_distribution(prunable_layers: List,
                               prune_distribution: Tensor, 
                               layer_cluster_mask: List) -> Tensor:
-    """ Adjust so that layer among non-zero cluster has equal probability to be pruned """
+    """ Adjust so that layer among non-zero cluster has equal (zero) probability to be pruned """
     cluster_total_value = {}
     cluster_layer_number = {}
     for idx, mask in enumerate(layer_cluster_mask):
@@ -461,7 +484,8 @@ def adjust_prune_distribution(prunable_layers: List,
                 cluster_layer_number[mask] += 1
     for idx, mask in enumerate(layer_cluster_mask):
         if mask > 0:
-            prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
+            # prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
+            prune_distribution[idx] = 0
     prune_distribution /= torch.sum(prune_distribution)
 
     """ Adjust so that layer has only 1 out dim layer cant be pruned """
