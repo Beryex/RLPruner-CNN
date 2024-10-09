@@ -30,6 +30,10 @@ def main():
     global loss_function
     global ft_epoch
     global warmup_epoch
+    global sample_input
+    global original_para_num
+    global original_FLOPs_num
+    
     args = get_args()
     device = args.device
     model_name = args.model
@@ -123,7 +127,8 @@ def main():
                                 sample_input=sample_input,
                                 sample_num=args.sample_num,
                                 prune_filter_ratio=args.prune_filter_ratio,
-                                noise_var=args.noise_var)
+                                noise_var=args.noise_var,
+                                Q_value_alpha=args.Q_value_alpha)
         logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
 
         wandb.log({"top1_acc": teacher_top1_acc, 
@@ -341,15 +346,8 @@ def generate_architecture(original_model_with_info: Tuple,
             pbar.set_postfix({'Best Q value': best_Q_value, 
                               'Q value': cur_Q_value})
             pbar.update(1)
-
-    # use epsilon-greedy exploration strategy
-    if torch.rand(1).item() < args.greedy_epsilon:
-        best_model_index = torch.randint(0, args.sample_num, (1,)).item()
-        logging.info(f'Exploration: model {best_model_index} is the best new model')
-    else:
-        best_model_index = torch.argmax(prune_agent.ReplayBuffer[:, 0])
-        logging.info(f'Exploitation: model {best_model_index} is the best new model')
-    best_generated_model_with_info = prune_agent.model_info_list[best_model_index]
+    
+    best_generated_model_with_info = prune_agent.get_optimal_compressed_model(args.greedy_epsilon)
     
     return best_generated_model_with_info, best_Q_value
 
@@ -377,7 +375,14 @@ def sample_trajectory(cur_step: int,
                                                                    calibration_loader)
         # evaluate generated architecture
         top1_acc, _, _ = evaluate(generated_model, test_loader)
-        Q_value_dict[cur_step][model_id] = top1_acc
+        model_FLOPs, model_Params = profile(model=generated_model, 
+                                            inputs = (sample_input, ), 
+                                            verbose=False)
+        FLOPs_compression_ratio = 1 - model_FLOPs / original_FLOPs_num
+        Para_compression_ratio = 1 - model_Params / original_para_num
+        Q_value_dict[cur_step][model_id] = prune_agent.Q_value_function(top1_acc, 
+                                                                        FLOPs_compression_ratio,
+                                                                        Para_compression_ratio)
     
         sample_trajectory(cur_step=cur_step + 1, 
                           original_model_with_info=generated_model_with_info, 
@@ -389,11 +394,8 @@ def sample_trajectory(cur_step: int,
         
         # update Q_value and ReplayBuffer at top level
         if cur_step == 0:
-            min_top1_acc, min_idx = torch.min(prune_agent.ReplayBuffer[:, 0], dim=0)
-            if Q_value_dict[0][model_id] >= min_top1_acc:
-                prune_agent.ReplayBuffer[min_idx, 0] = Q_value_dict[0][model_id]
-                prune_agent.ReplayBuffer[min_idx, 1:] = prune_distribution_action
-                prune_agent.model_info_list[min_idx] = generated_model_with_info
+            Q_value = Q_value_dict[0][model_id]
+            prune_agent.update_ReplayBuffer(Q_value, prune_distribution_action, generated_model_with_info)
 
 
 def post_training_with_KD(teacher_model: nn.Module,
@@ -453,6 +455,8 @@ def get_args():
                         help='what ratio of filter to prune for each pruning')
     parser.add_argument('--noise_var', '-nv', type=float, default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
                         help='variance when generating new prune distribution')
+    parser.add_argument('--Q_value_alpha', '-qva', type=float, default=settings.RL_Q_VALUE_ALPHA, 
+                        help='the coefficient when computing Q value')
     parser.add_argument('--lr_epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
                         help='max epoch for reinforcement learning sampling epoch')
     parser.add_argument('--sample_step', '-ss', type=int, default=settings.RL_SAMPLE_STEP, 

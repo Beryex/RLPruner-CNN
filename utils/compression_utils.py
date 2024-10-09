@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import logging
@@ -22,7 +22,8 @@ class RL_Pruner():
                  sample_input: Tensor,
                  sample_num: int,
                  prune_filter_ratio: float,
-                 noise_var: float):
+                 noise_var: float,
+                 Q_value_alpha: float):
         """ Extract prunable layer and layer dependence """
         logging.info(f'Start extracting layers dependency')
         print(f"Start extracting layers dependency")
@@ -48,6 +49,7 @@ class RL_Pruner():
         self.modification_num = int(filter_num * prune_filter_ratio)
         self.layer_cluster_mask = layer_cluster_mask
         self.noise_var = noise_var
+        self.Q_value_alpha = Q_value_alpha
         
         """ Dynamic Data: These attributes may change during the object's lifetime """
         self.model = model
@@ -220,7 +222,36 @@ class RL_Pruner():
 
         return noised_PD
 
-    def _get_prune_counter(self, PD) -> List:
+    
+    def Q_value_function(self, top1_acc: float, FLOPs_ratio: float, Para_ratio: float) -> float:
+        """ Compute the Q value """
+        return top1_acc + self.Q_value_alpha * FLOPs_ratio
+    
+
+    def update_ReplayBuffer(self, 
+                            Q_value: float, 
+                            prune_distribution_action: Tensor, 
+                            generated_model_with_info: List) -> None:
+        min_top1_acc, min_idx = torch.min(self.ReplayBuffer[:, 0], dim=0)
+        if Q_value >= min_top1_acc:
+            self.ReplayBuffer[min_idx, 0] = Q_value
+            self.ReplayBuffer[min_idx, 1:] = prune_distribution_action
+            self.model_info_list[min_idx] = generated_model_with_info
+            
+    
+    def get_optimal_compressed_model(self, greedy_epsilon: float) -> List:
+        """ Use epsilon-greedy exploration strategy to get optimal compressed model """
+        if torch.rand(1).item() < greedy_epsilon:
+            best_model_index = torch.randint(0, args.sample_num, (1,)).item()
+            logging.info(f'Exploration: model {best_model_index} is the best new model')
+        else:
+            best_model_index = torch.argmax(self.ReplayBuffer[:, 0])
+            logging.info(f'Exploitation: model {best_model_index} is the best new model')
+        best_generated_model_with_info = self.model_info_list[best_model_index]
+        return best_generated_model_with_info
+
+
+    def _get_prune_counter(self, PD: Tensor) -> List:
         """ Get the number of filter to be pruned for each layer """
         prune_counter = torch.round(PD * self.modification_num).int()
         
