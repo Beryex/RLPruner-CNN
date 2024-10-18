@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import logging
 import wandb
+import math
 
 from conf import settings
 from utils import (adjust_prune_distribution, CONV_LAYERS, NORM_LAYERS, set_inplace_false, 
@@ -13,6 +14,7 @@ from utils import (adjust_prune_distribution, CONV_LAYERS, NORM_LAYERS, set_inpl
 
 
 PRUNE_STRATEGY = ["random", "variance", "l1", "l2", "taylor"]
+EXPLORE_STRATEGY = ["constant", "linear", "cosine"]
 
 
 class RL_Pruner():
@@ -20,6 +22,10 @@ class RL_Pruner():
     def __init__(self,
                  model: nn.Module,
                  sample_input: Tensor,
+                 prune_steps: int,
+                 explore_strategy: str,
+                 greedy_epsilon: float,
+                 prune_strategy: str,
                  sample_num: int,
                  prune_filter_ratio: float,
                  noise_var: float,
@@ -45,6 +51,10 @@ class RL_Pruner():
                        step=0)
 
         """ Static Data: These attributes do not change after initialization """
+        self.prune_steps = prune_steps
+        self.explore_strategy = explore_strategy
+        self.initial_greedy_epsilon = greedy_epsilon
+        self.prune_strategy = prune_strategy
         self.sample_num = sample_num
         self.modification_num = int(filter_num * prune_filter_ratio)
         self.layer_cluster_mask = layer_cluster_mask
@@ -52,6 +62,7 @@ class RL_Pruner():
         self.Q_value_alpha = Q_value_alpha
         
         """ Dynamic Data: These attributes may change during the object's lifetime """
+        self.cur_step = 0
         self.model = model
         self.prunable_layers = prunable_layers
         self.next_layers = next_layers
@@ -60,6 +71,7 @@ class RL_Pruner():
         # Replay buffer [:, 0] stores Q value Q(s, a), [:, 1:] stores action PD
         self.ReplayBuffer = torch.zeros([sample_num, 1 + len(prune_distribution)])
         self.model_info_list = [None] * sample_num
+        self.greedy_epsilon = self.initial_greedy_epsilon
 
 
     def link_model(self, model_with_info: Tuple) -> None:
@@ -80,6 +92,17 @@ class RL_Pruner():
         self.prune_distribution = adjust_prune_distribution(self.prunable_layers,
                                                             self.prune_distribution, 
                                                             self.layer_cluster_mask)
+    
+
+    def step(self) -> None:
+        """ Increment prune step and update relevant parameter"""
+        self.cur_step += 1
+        if self.explore_strategy == "linear":
+            self.greedy_epsilon = (1 - self.cur_step / self.prune_steps) * self.initial_greedy_epsilon
+        elif self.explore_strategy == "cosine":
+            self.greedy_epsilon = 0.5 * (1 + math.cos(math.pi * self.cur_step / self.prune_steps)) * self.initial_greedy_epsilon
+        else:
+            raise NotImplementedError
     
 
     def resume_model(self, model: nn.Module, sample_input: Tensor) -> None:
@@ -144,7 +167,6 @@ class RL_Pruner():
 
 
     def prune_architecture(self,
-                           prune_strategy: str,
                            model: nn.Module,
                            calibration_loader: DataLoader) -> Tensor:
         """ Generate new noised PD and prune architecture based on noised PD """
@@ -157,27 +179,8 @@ class RL_Pruner():
         prune_counter = self._get_prune_counter(noised_PD)
 
         """ Get each filter's importance """
-        all_layer_filter_importance = self._get_filter_importance(prune_strategy, model, calibration_loader)
+        all_layer_filter_importance = self._get_filter_importance(self.prune_strategy, model, calibration_loader)
         self.all_layer_filter_importance = all_layer_filter_importance
-            
-        """ Average the filter importance inside a cluster to represent overall importance """
-        cluster_filter_importance = {}  # index 0 stores filter importance tensor, index 1 stores number of layers in that cluster
-        for target_layer_idx, count in enumerate(prune_counter):
-            cluster_mask = self.layer_cluster_mask[target_layer_idx]
-            if cluster_mask > 0:
-                filter_importance = all_layer_filter_importance[target_layer_idx]
-                if cluster_mask not in cluster_filter_importance:
-                    cluster_filter_importance[cluster_mask] = [filter_importance, 1]
-                else:
-                    if len(filter_importance) != len(cluster_filter_importance[cluster_mask][0]):
-                        raise ValueError(f"The filter numbers inside a cluster are different")
-                    cluster_filter_importance[cluster_mask] += [filter_importance, 1]
-        
-        for target_layer_idx, count in enumerate(prune_counter):
-            cluster_mask = self.layer_cluster_mask[target_layer_idx]
-            if cluster_mask > 0:
-                all_layer_filter_importance[target_layer_idx] = (cluster_filter_importance[cluster_mask][0] /
-                                                                 cluster_filter_importance[cluster_mask][1])
             
         """ Prune each layer's filter based on importance """
         # decred_layer: used to track which layer's next PRUNABLE_LAYER has been decred input (marked as 1)
@@ -239,10 +242,10 @@ class RL_Pruner():
             self.model_info_list[min_idx] = generated_model_with_info
             
     
-    def get_optimal_compressed_model(self, greedy_epsilon: float) -> List:
+    def get_optimal_compressed_model(self) -> List:
         """ Use epsilon-greedy exploration strategy to get optimal compressed model """
-        if torch.rand(1).item() < greedy_epsilon:
-            best_model_index = torch.randint(0, args.sample_num, (1,)).item()
+        if torch.rand(1).item() < self.greedy_epsilon:
+            best_model_index = torch.randint(0, self.ReplayBuffer.shape[0], (1,)).item()
             logging.info(f'Exploration: model {best_model_index} is the best new model')
         else:
             best_model_index = torch.argmax(self.ReplayBuffer[:, 0])
@@ -351,6 +354,27 @@ class RL_Pruner():
                 
                 else:
                     raise ValueError(f'Unsupported prune strategy: {prune_strategy}')
+        
+        """ Average the filter importance inside a cluster to represent overall importance """
+        cluster_filter_importance = {}  # index 0 stores filter importance tensor, index 1 stores number of layers in that cluster
+        for target_layer_idx, layer in enumerate(self.prunable_layers):
+            cluster_mask = self.layer_cluster_mask[target_layer_idx]
+            if cluster_mask > 0:
+                filter_importance = all_layer_filter_importance[target_layer_idx]
+                if cluster_mask not in cluster_filter_importance:
+                    cluster_filter_importance[cluster_mask] = [filter_importance, 1]
+                else:
+                    if len(filter_importance) != len(cluster_filter_importance[cluster_mask][0]):
+                        raise ValueError(f"The filter numbers inside a cluster are different")
+                    cluster_filter_importance[cluster_mask][0] += filter_importance
+                    cluster_filter_importance[cluster_mask][1] += 1
+        
+        for target_layer_idx, layer in enumerate(self.prunable_layers):
+            cluster_mask = self.layer_cluster_mask[target_layer_idx]
+            if cluster_mask > 0:
+                all_layer_filter_importance[target_layer_idx] = (cluster_filter_importance[cluster_mask][0] /
+                                                                 cluster_filter_importance[cluster_mask][1])
+                
         return all_layer_filter_importance
 
 

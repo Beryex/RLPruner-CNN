@@ -18,7 +18,7 @@ import gc
 from conf import settings
 from utils import (setup_logging, get_dataloader, get_dataloader_with_checkpoint,
                    RL_Pruner, torch_set_random_seed, torch_resume_random_seed,
-                   WarmUpLR, DATASETS, PRUNE_STRATEGY)
+                   WarmUpLR, DATASETS, PRUNE_STRATEGY, EXPLORE_STRATEGY)
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
     dataset_name = args.dataset
 
     pretrained_pth = f"{args.pretrained_dir}/{model_name}_{dataset_name}_original.pth"
-    compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{args.sparsity}.pth"
+    compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{args.sparsity:.2f}.pth"
 
 
     """ Setup logging and get model, data loader, loss function """
@@ -115,6 +115,7 @@ def main():
                                                         verbose=False)
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
+        prune_steps = round(args.sparsity // args.prune_filter_ratio)
 
         teacher_top1_acc, _, _ = evaluate(model, test_loader)
 
@@ -125,6 +126,10 @@ def main():
     else:
         prune_agent = RL_Pruner(model=model,
                                 sample_input=sample_input,
+                                prune_steps=prune_steps,
+                                explore_strategy=args.explore_strategy,
+                                greedy_epsilon=args.greedy_epsilon,
+                                prune_strategy=args.prune_strategy,
                                 sample_num=args.sample_num,
                                 prune_filter_ratio=args.prune_filter_ratio,
                                 noise_var=args.noise_var,
@@ -149,12 +154,11 @@ def main():
         print(f"Start with random seed: {random_seed}")
 
     """ begin compressing """
-    pruning_epoch = round(args.sparsity // args.prune_filter_ratio)
     prev_top1_acc = teacher_top1_acc
-    with tqdm(total=pruning_epoch, desc=f'Compressing', unit='epoch') as pbar:
+    with tqdm(total=prune_steps, desc=f'Compressing', unit='epoch') as pbar:
         pbar.update(prev_epoch)
 
-        for epoch in range(1 + prev_epoch, pruning_epoch + 1):
+        for epoch in range(1 + prev_epoch, prune_steps + 1):
             """ get generated model """
             generated_model_with_info, best_Q_value = generate_architecture(model_with_info, 
                                                                             prune_agent)
@@ -192,7 +196,7 @@ def main():
                                                         optimizer=optimizer,
                                                         lr_scheduler_warmup=lr_scheduler_warmup,
                                                         T=args.KD_temperature,
-                                                        soft_loss_weight=1-args.stu_co,
+                                                        soft_loss_weight=1 - args.stu_co,
                                                         stu_loss_weight=args.stu_co)
                         top1_acc, top5_acc, _ = evaluate(generated_model, test_loader)
                         logging.info(f"epoch: {ft_epoch}/{args.post_training_epoch}, "
@@ -228,20 +232,23 @@ def main():
             wandb.log({"top1_acc": best_acc, 
                        "best_Q_value": best_Q_value,
                        "modification_num": prune_agent.modification_num, 
+                       "explore_epsilon": prune_agent.greedy_epsilon,
                        "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                        "Para_compression_ratio": Para_compression_ratio}, 
                        step=epoch)
             for i in range(len(prune_agent.prune_distribution)):
                 wandb.log({f"prune_distribution_item_{i}": prune_agent.prune_distribution[i]}, 
                            step=epoch)
-            logging.info(f'Epoch: {epoch}/{pruning_epoch}, ' 
+            logging.info(f'Epoch: {epoch}/{prune_steps}, ' 
                          f'top1_acc: {best_acc}, '
                          f'best_Q_value: {best_Q_value}, '
                          f'modification_num: {prune_agent.modification_num}, '
+                         f'explore_epsilon: {prune_agent.greedy_epsilon}, '
                          f'compression ratio: FLOPs: {FLOPs_compression_ratio}, '
                          f'Parameter number {Para_compression_ratio}')
             
             prune_agent.clear_cache()
+            prune_agent.step()
 
             # save checkpoint
             if epoch % 5 == 0:
@@ -347,7 +354,7 @@ def generate_architecture(original_model_with_info: Tuple,
                               'Q value': cur_Q_value})
             pbar.update(1)
     
-    best_generated_model_with_info = prune_agent.get_optimal_compressed_model(args.greedy_epsilon)
+    best_generated_model_with_info = prune_agent.get_optimal_compressed_model()
     
     return best_generated_model_with_info, best_Q_value
 
@@ -370,8 +377,7 @@ def sample_trajectory(cur_step: int,
         
         """ Link the generated model and prune it """
         prune_agent.link_model(generated_model_with_info)
-        prune_distribution_action = prune_agent.prune_architecture(args.prune_strategy,
-                                                                   generated_model,
+        prune_distribution_action = prune_agent.prune_architecture(generated_model,
                                                                    calibration_loader)
         # evaluate generated architecture
         top1_acc, _, _ = evaluate(generated_model, test_loader)
@@ -448,6 +454,8 @@ def get_args():
     parser.add_argument('--sparsity', '-s', type=float, default=settings.C_SPARSITY, 
                         help='the overall pruning sparsity')
     parser.add_argument('--prune_strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
+                        help='strategy to evaluate unimportant weights')
+    parser.add_argument('--explore_strategy', '-es', type=str, default=settings.RL_EXPLORE_STRATEGY, 
                         help='strategy to evaluate unimportant weights')
     parser.add_argument('--calibration_num', '-cn', type=int, default=settings.C_CALIBRATION_NUM, 
                         help='the number of samples in the calibration dataset')
@@ -535,6 +543,9 @@ def check_args(args: argparse.Namespace):
     if args.prune_strategy not in PRUNE_STRATEGY:
         raise ValueError(f"the provided prune_strategy {args.prune_strategy} is not supported, "
                          f"please select one of {PRUNE_STRATEGY}")
+    if args.explore_strategy not in EXPLORE_STRATEGY:
+        raise ValueError(f"the provided explore_strategy {args.explore_strategy} is not supported, "
+                         f"please select one of {EXPLORE_STRATEGY}")
     
     if args.sparsity >= 1 or args.sparsity < 0:
         raise ValueError(f"the sparsity of compressed model should be in interval [0, 1]")
