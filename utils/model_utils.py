@@ -471,7 +471,7 @@ def check_tensor_in_cluster(input_tensor: Tensor,
 def adjust_prune_distribution(prunable_layers: List,
                               prune_distribution: Tensor, 
                               layer_cluster_mask: List) -> Tensor:
-    """ Adjust so that layer among non-zero cluster has equal (zero) probability to be pruned """
+    """ Adjust so that layer among non-zero cluster has equal probability to be pruned """
     cluster_total_value = {}
     cluster_layer_number = {}
     for idx, mask in enumerate(layer_cluster_mask):
@@ -484,8 +484,7 @@ def adjust_prune_distribution(prunable_layers: List,
                 cluster_layer_number[mask] += 1
     for idx, mask in enumerate(layer_cluster_mask):
         if mask > 0:
-            # prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
-            prune_distribution[idx] = 0
+            prune_distribution[idx] = cluster_total_value[mask] / cluster_layer_number[mask]
     prune_distribution /= torch.sum(prune_distribution)
 
     """ Adjust so that layer has only 1 out dim layer cant be pruned """

@@ -101,8 +101,6 @@ class RL_Pruner():
             self.greedy_epsilon = (1 - self.cur_step / self.prune_steps) * self.initial_greedy_epsilon
         elif self.explore_strategy == "cosine":
             self.greedy_epsilon = 0.5 * (1 + math.cos(math.pi * self.cur_step / self.prune_steps)) * self.initial_greedy_epsilon
-        else:
-            raise NotImplementedError
     
 
     def resume_model(self, model: nn.Module, sample_input: Tensor) -> None:
