@@ -2,8 +2,8 @@
 
 MODEL=${1}
 DATASET=${2}
-
 SPARSITY=${3}
+prune_strategy=${4}
 
 LOG=log
 CKPT=checkpoint
@@ -23,9 +23,7 @@ python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
 
 # Step 2: Compress trained model
 python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
-                   --sparsity ${SPARSITY} --prune_strategy variance \
-                   --greedy_epsilon 0 --ppo \
-                   --noise_var 0.04 --ppo_clip 0.2 \
+                   --sparsity ${SPARSITY} --prune_strategy ${prune_strategy} --ppo \
                    --pretrained_dir ${PRETRAINED_MODEL_DIR} \
                    --compressed_dir ${COMPRESSED_MODEL_DIR} \
                    --checkpoint_dir ${CKPT_DIR} \

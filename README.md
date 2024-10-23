@@ -31,7 +31,8 @@ pip install -r requirements.txt
 RLPruner could auto detect the layer dependence inside the model and execute structural pruning. So it can accept any type of CNN without model-wise pruning code implementation. However, RLPruner assume that:
 
 - the output layer is defined last
-- use self.act = nn.ReLU(inplace=True) and def forward(x): return self.act(layer1(x) + layer2(x)), rather than def forward(x): return nn.ReLU(inplace=True)(layer1(x) + layer2(x))
+- Define the layers to be used during initialization, rather than creating new layers within the 'forward' method. For example, use self.act = nn.ReLU(inplace=True) and def forward(x): return self.act(layer1(x) + layer2(x)), rather than def forward(x): return nn.ReLU(inplace=True)(layer1(x) + layer2(x))
+- The layers defined during initialization should be used only once in the forward method, not multiple times. For example, use self.act1 = nn.ReLU(inplace=True), self.act2 = nn.ReLU(inplace=True) and def forward(x): return self.act2(layer2(self.act1(layer1(x)))), rather than self.act = nn.ReLU(inplace=True) and def forward(x): return self.act(layer2(self.act(layer1(x))))
 
 RLPruner support grouped convolution, but it will only prune depthwise convolution. Grouped convolution layers that are not depthwise will be skipped during the pruning process.
 

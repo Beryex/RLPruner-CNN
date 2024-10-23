@@ -20,16 +20,14 @@ def main():
     """ Train model and save model using early stop on test dataset """
     global args
     global epoch
+    global warmup_epoch
     args = get_args()
     model_name = args.model
     dataset_name = args.dataset
 
-    if args.random_seed is not None:
-        random_seed = args.random_seed
-        experiment_id = int(time.time())
-    else:
-        random_seed = int(time.time())
-        experiment_id = random_seed
+    random_seed = args.random_seed
+    experiment_id = int(time.time())
+    
     device = args.device
     setup_logging(log_dir=args.log_dir,
                   experiment_id=experiment_id, 
@@ -44,17 +42,20 @@ def main():
     logging.info(f'Start with random seed: {random_seed}')
     print(f"Start with random seed: {random_seed}")
     
-    train_loader, _, test_loader, in_channels, num_class = get_dataloader(args.dataset, 
-                                                                          batch_size=args.batch_size, 
-                                                                          num_workers=args.num_worker)
-    model = get_model(args.model, in_channels, num_class).to(device)
+    train_loader, _, test_loader, num_classes = get_dataloader(args.dataset, 
+                                                             batch_size=args.batch_size, 
+                                                             num_workers=args.num_worker)
+    model = get_model(args.model, num_classes).to(device)
 
     loss_function = nn.CrossEntropyLoss()
+    warmup_epoch = int(args.epoch * args.warmup_ratio)
+    
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-                                                        T_max=args.epoch - args.warmup_epoch - 10, 
+                                                        T_max=args.epoch - warmup_epoch, 
                                                         eta_min= args.min_lr,
                                                         last_epoch=-1)
+    lr_scheduler_warmup = WarmUpLR(optimizer, warmup_epoch * len(train_loader))
     
     best_acc = 0.0
     with tqdm(total=args.epoch, desc=f'Training', unit='epoch') as pbar:
@@ -62,7 +63,8 @@ def main():
             train_loss = train(model, 
                                train_loader, 
                                loss_function, 
-                               optimizer, 
+                               optimizer,
+                               lr_scheduler_warmup,
                                device)
             top1_acc, top5_acc, _ = evaluate(model, 
                                              test_loader, 
@@ -72,15 +74,15 @@ def main():
             for param_group in optimizer.param_groups:
                 lr = param_group['lr']
 
-            if epoch > args.warmup_epoch:
+            if epoch > warmup_epoch:
                 lr_scheduler.step()
 
             if best_acc < top1_acc:
                 best_acc = top1_acc
                 best_model = copy.deepcopy(model)
             
-            logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, "lr": {lr}'
-                         f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}'
+            logging.info(f'Epoch: {epoch}, Train Loss: {train_loss}, "lr": {lr}, '
+                         f'Top1 Accuracy: {top1_acc}, Top5 Accuracy: {top5_acc}, '
                          f'Best top1 acc: {best_acc}')
             wandb.log({"epoch": epoch, "train_loss": train_loss, "lr": lr,
                        "top1_acc": top1_acc, "top5_acc": top5_acc,
@@ -91,9 +93,9 @@ def main():
     
     os.makedirs(f"{args.output_dir}", exist_ok=True)
     output_pth = f"{args.output_dir}/{model_name}_{dataset_name}_original.pth"
-    torch.save(best_model, args.output_pth)
-    logging.info(f"Pretrained model saved at {args.output_pth}")
-    print(f"Pretrained model saved at {args.output_pth}")
+    torch.save(best_model, output_pth)
+    logging.info(f"Pretrained model saved at {output_pth}")
+    print(f"Pretrained model saved at {output_pth}")
     wandb.finish()
 
 
@@ -101,6 +103,7 @@ def train(model: nn.Module,
           train_loader: DataLoader, 
           loss_function: nn.Module,
           optimizer: optim.Optimizer,
+          lr_scheduler_warmup: WarmUpLR,
           device: str) -> float:
     """ Train model and save using early stop on test dataset """
     model.train()
@@ -111,10 +114,15 @@ def train(model: nn.Module,
 
         optimizer.zero_grad()
         outputs = model(images)
+        if isinstance(outputs, tuple):
+            outputs = outputs[0]
         loss = loss_function(outputs, labels)
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
+
+        if epoch <= warmup_epoch:
+            lr_scheduler_warmup.step()
 
     train_loss /= len(train_loader)
     return train_loss
@@ -135,6 +143,8 @@ def evaluate(model: nn.Module,
         labels = labels.to(device)
         
         outputs = model(images)
+        if isinstance(outputs, tuple):
+            outputs = outputs[0]
         eval_loss += loss_function(outputs, labels).item()
         _, preds = outputs.topk(5, 1, largest=True, sorted=True)
         correct_1 += (preds[:, :1] == labels.unsqueeze(1)).sum().item()
@@ -157,18 +167,18 @@ def get_args():
                         help='initial learning rate')
     parser.add_argument('--min_lr', type=float, default=settings.T_LR_SCHEDULER_MIN_LR,
                         help='minimal learning rate')
-    parser.add_argument('--warmup_epoch', '-we', type=int, default=settings.T_WARMUP_EPOCH, 
-                        help='warmup epoch number for lr scheduler')
     parser.add_argument('--batch_size', '-b', type=int, default=settings.T_BATCH_SIZE, 
                         help='batch size for dataloader')
     parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 
                         help='number of workers for dataloader')
     parser.add_argument('--epoch', '-e', type=int, default=settings.T_EPOCH, 
                         help='total epoch to train')
+    parser.add_argument('--warmup_ratio', '-wr', type=int, default=settings.T_WARMUP_RATIO, 
+                        help='the ratio of warmup epoch number over total epoch number for lr scheduler')
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
-    parser.add_argument('--random_seed', '-rs', type=int, default=None, 
-                        help='the random seed for the current new compression')
+    parser.add_argument('--random_seed', '-rs', type=int, default=1, 
+                        help='the random seed for the training')
     parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
     
