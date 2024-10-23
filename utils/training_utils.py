@@ -38,7 +38,7 @@ def setup_logging(log_dir: str,
                   model_name: str, 
                   dataset_name: str,
                   action: str,
-                  project_name: str = "RLPruner",
+                  project_name: str = "RLPruner-CNN",
                   use_wandb: bool = False) -> None:
     """ Set up wandb, logging """    
     hyperparams_config = {

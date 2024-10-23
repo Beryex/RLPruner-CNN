@@ -226,6 +226,7 @@ def main():
             model_FLOPs, model_Params = profile(model=model_with_info[0], 
                                                 inputs = (sample_input, ), 
                                                 verbose=False)
+            Speedup_ratio = original_FLOPs_num / model_Params
             FLOPs_compression_ratio = 1 - model_FLOPs / original_FLOPs_num
             Para_compression_ratio = 1 - model_Params / original_para_num
 
@@ -233,6 +234,7 @@ def main():
                        "best_Q_value": best_Q_value,
                        "modification_num": prune_agent.modification_num, 
                        "explore_epsilon": prune_agent.greedy_epsilon,
+                       "Speedup_ratio": Speedup_ratio,
                        "FLOPs_compression_ratio": FLOPs_compression_ratio, 
                        "Para_compression_ratio": Para_compression_ratio}, 
                        step=epoch)
@@ -244,6 +246,7 @@ def main():
                          f'best_Q_value: {best_Q_value}, '
                          f'modification_num: {prune_agent.modification_num}, '
                          f'explore_epsilon: {prune_agent.greedy_epsilon}, '
+                         f'Speedup_ratio: {Speedup_ratio}, '
                          f'compression ratio: FLOPs: {FLOPs_compression_ratio}, '
                          f'Parameter number {Para_compression_ratio}')
             
@@ -288,10 +291,11 @@ def main():
             gc.collect()
             torch.cuda.empty_cache()
 
-            pbar.set_postfix({'Para': Para_compression_ratio, 
-                                'FLOPs': FLOPs_compression_ratio, 
-                                'Q_value': best_Q_value,
-                                'Top1_acc': best_acc})
+            pbar.set_postfix({'Speedup': Speedup_ratio, 
+                              'Para': Para_compression_ratio, 
+                              'FLOPs': FLOPs_compression_ratio, 
+                              'Q_value': best_Q_value,
+                              'Top1_acc': best_acc})
             pbar.update(1)
         
         os.makedirs(f"{args.compressed_dir}", exist_ok=True)
