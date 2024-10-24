@@ -19,7 +19,7 @@ python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
                    --pretrained_dir ${PRETRAINED_MODEL_DIR} \
                    --compressed_dir ${COMPRESSED_MODEL_DIR} \
                    --checkpoint_dir ${CKPT_DIR} \
-                   --log_dir ${LOG} --use_wandb \
+                   --log_dir ${LOG} \
                    # --resume --resume_epoch 5
 
 python -m evaluate --model ${MODEL} --dataset ${DATASET} --device cuda \

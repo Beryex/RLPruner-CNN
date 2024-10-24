@@ -209,7 +209,7 @@ class RL_Pruner():
             else:
                 decre_input = True
             for _ in range(count):
-                if len(filter_importance) > 1:
+                if len(filter_importance) > 1:  # prevent deleting the whole layer
                     target_filter_idx = torch.argmin(filter_importance).item()
                     filter_importance = torch.cat((filter_importance[:target_filter_idx], 
                                                     filter_importance[target_filter_idx + 1:]))
@@ -266,7 +266,7 @@ class RL_Pruner():
             i = 0
             while difference > 0:
                 layer_idx = sorted_indices[i]
-                if self.layer_cluster_mask[layer_idx] == 0:
+                if self.layer_cluster_mask[layer_idx] == 0 and PD[layer_idx] > 0:
                     prune_counter[layer_idx] += 1
                     difference -= 1
                 i += 1
@@ -441,10 +441,13 @@ class RL_Pruner():
                 self._decrease_offset(next_layer, offset, 1)
                 if next_layer.out_channels != next_layer.weight.shape[0]:
                     raise ValueError(f'Conv2d layer in_channels {next_layer.out_channels} and '
-                                    f'weight dimension {next_layer.weight.shape[0]} mismatch')
+                                     f'weight dimension {next_layer.weight.shape[0]} mismatch')
                 if next_layer.out_channels != next_layer.in_channels:
                     raise ValueError(f'Conv2d layer in_channels {next_layer.out_channels} and '
-                                    f'weight dimension {next_layer.in_channels} mismatch')
+                                     f'weight dimension {next_layer.in_channels} mismatch')
+                if next_layer.out_channels != next_layer.groups:
+                    raise ValueError(f'Conv2d layer in_channels {next_layer.out_channels} and '
+                                     f'weight dimension {next_layer.groups} mismatch')
                 # we need decre next layers after this depthwise conv layer manually
                 for target_layer_idx, layer in enumerate(self.prunable_layers):
                     if id(layer) == id(next_layer):

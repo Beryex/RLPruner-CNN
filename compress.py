@@ -58,7 +58,6 @@ def main():
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
-                      project_name=args.project_name,
                       use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
         print(f"Resume Logging setup complete for experiment id: {experiment_id}")
@@ -83,7 +82,6 @@ def main():
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
-                      project_name=args.project_name,
                       use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
         print(f"Logging setup complete for experiment id: {experiment_id}")
@@ -514,8 +512,6 @@ def get_args():
     parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
     
-    parser.add_argument('--project_name', '-pn', type=str, default='RLPruner', 
-                        help='the project name of wandb for the expriment')
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')
     parser.add_argument('--checkpoint_dir', '-ckptdir', type=str, default='checkpoint', 
