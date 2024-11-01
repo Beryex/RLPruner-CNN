@@ -39,8 +39,8 @@ def main():
     model_name = args.model
     dataset_name = args.dataset
 
-    pretrained_pth = f"{args.pretrained_dir}/{model_name}_{dataset_name}_original.pth"
-    compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{args.sparsity:.2f}.pth"
+    pretrained_pth = f"{args.pretrained_pth}"
+    compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{args.sparsity:.2f}_{args.Q_FLOP_coef}_{args.Q_Para_coef}.pth"
 
 
     """ Setup logging and get model, data loader, loss function """
@@ -58,7 +58,6 @@ def main():
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
-                      project_name=args.project_name,
                       use_wandb=args.use_wandb)
         logging.info(f'Resume Logging setup complete for experiment id: {experiment_id}')
         print(f"Resume Logging setup complete for experiment id: {experiment_id}")
@@ -83,7 +82,6 @@ def main():
                       model_name=args.model, 
                       dataset_name=args.dataset, 
                       action='compress',
-                      project_name=args.project_name,
                       use_wandb=args.use_wandb)
         logging.info(f'Logging setup complete for experiment id: {experiment_id}')
         print(f"Logging setup complete for experiment id: {experiment_id}")
@@ -115,7 +113,7 @@ def main():
                                                         verbose=False)
         Para_compression_ratio = 0.0
         FLOPs_compression_ratio = 0.0
-        prune_steps = round(args.sparsity // args.prune_filter_ratio)
+        prune_steps = round(args.sparsity / args.prune_filter_ratio)
 
         teacher_top1_acc, _, _ = evaluate(model, test_loader)
 
@@ -125,6 +123,7 @@ def main():
         prune_agent.resume_model(model, sample_input)
     else:
         prune_agent = RL_Pruner(model=model,
+                                skip_layer_index=args.skip_layer_index,
                                 sample_input=sample_input,
                                 prune_steps=prune_steps,
                                 explore_strategy=args.explore_strategy,
@@ -133,7 +132,8 @@ def main():
                                 sample_num=args.sample_num,
                                 prune_filter_ratio=args.prune_filter_ratio,
                                 noise_var=args.noise_var,
-                                Q_value_alpha=args.Q_value_alpha)
+                                Q_FLOP_coef=args.Q_FLOP_coef,
+                                Q_Para_coef=args.Q_Para_coef)
         logging.info(f'Initial prune probability distribution: {prune_agent.prune_distribution}')
 
         wandb.log({"top1_acc": teacher_top1_acc, 
@@ -180,9 +180,9 @@ def main():
             """ post training generated model """
             if epoch % args.post_train_period == 0:
                 optimizer = optim.SGD(generated_model.parameters(), 
-                                    lr=args.lr, 
-                                    momentum=0.9, 
-                                    weight_decay=5e-4)
+                                      lr=args.lr, 
+                                      momentum=0.9, 
+                                      weight_decay=5e-4)
                 lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 
                                                                     args.post_training_epoch - warmup_epoch, 
                                                                     eta_min=args.min_lr,
@@ -226,7 +226,7 @@ def main():
             model_FLOPs, model_Params = profile(model=model_with_info[0], 
                                                 inputs = (sample_input, ), 
                                                 verbose=False)
-            Speedup_ratio = original_FLOPs_num / model_Params
+            Speedup_ratio = original_FLOPs_num / model_FLOPs
             FLOPs_compression_ratio = 1 - model_FLOPs / original_FLOPs_num
             Para_compression_ratio = 1 - model_Params / original_para_num
 
@@ -297,11 +297,14 @@ def main():
                               'Q_value': best_Q_value,
                               'Top1_acc': best_acc})
             pbar.update(1)
+
+            if epoch % 5 == 0 and args.save_model:
+                os.makedirs(f"{args.compressed_dir}", exist_ok=True)
+                compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{epoch * args.prune_filter_ratio:.2f}_{args.Q_FLOP_coef:.2f}_{args.Q_Para_coef:.2f}.pth"
+                torch.save(model_with_info[0], f"{compressed_pth}")
+                logging.info(f"Compressed model saved at {compressed_pth}")
+                print(f"Compressed model saved at {compressed_pth}")
         
-        os.makedirs(f"{args.compressed_dir}", exist_ok=True)
-        torch.save(model_with_info[0], f"{compressed_pth}")
-        logging.info(f"Compressed model saved at {compressed_pth}")
-        print(f"Compressed model saved at {compressed_pth}")
         wandb.finish()
 
 
@@ -457,6 +460,8 @@ def get_args():
                         help='the dataset to train on')
     parser.add_argument('--sparsity', '-s', type=float, default=settings.C_SPARSITY, 
                         help='the overall pruning sparsity')
+    parser.add_argument('--skip_layer_index', '-sli', type=str, default='', 
+                        help='the layer to skip when pruning')
     parser.add_argument('--prune_strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
                         help='strategy to evaluate unimportant weights')
     parser.add_argument('--explore_strategy', '-es', type=str, default=settings.RL_EXPLORE_STRATEGY, 
@@ -467,8 +472,10 @@ def get_args():
                         help='what ratio of filter to prune for each pruning')
     parser.add_argument('--noise_var', '-nv', type=float, default=settings.RL_PRUNE_FILTER_NOISE_VAR, 
                         help='variance when generating new prune distribution')
-    parser.add_argument('--Q_value_alpha', '-qva', type=float, default=settings.RL_Q_VALUE_ALPHA, 
-                        help='the coefficient when computing Q value')
+    parser.add_argument('--Q_FLOP_coef', '-fc', type=float, default=settings.RL_FLOP_COEF, 
+                        help='the coefficient when computing Q value for FLOPs compression ratio')
+    parser.add_argument('--Q_Para_coef', '-pc', type=float, default=settings.RL_PARA_COEF, 
+                        help='the coefficient when computing Q value for Para compression ratio')
     parser.add_argument('--lr_epoch', '-lre', type=int, default=settings.RL_LR_EPOCH,
                         help='max epoch for reinforcement learning sampling epoch')
     parser.add_argument('--sample_step', '-ss', type=int, default=settings.RL_SAMPLE_STEP, 
@@ -513,16 +520,16 @@ def get_args():
                         help='the specific previous compression epoch that to be resumed')
     parser.add_argument('--use_wandb', action='store_true', default=False, 
                         help='use wandb to track the experiment')
+    parser.add_argument('--save_model', action='store_true', default=False, 
+                        help='whether to save the compressed model')
     
-    parser.add_argument('--project_name', '-pn', type=str, default='RLPruner', 
-                        help='the project name of wandb for the expriment')
     parser.add_argument('--log_dir', '-log', type=str, default='log', 
                         help='the directory containing logging text')
     parser.add_argument('--checkpoint_dir', '-ckptdir', type=str, default='checkpoint', 
                         help='the directory containing checkpoints')
-    parser.add_argument('--pretrained_dir', '-ppth', type=str, default='pretrained_model', 
-                        help='the directory containing pretrained model')
-    parser.add_argument('--compressed_dir', '-cpth', type=str, default='compressed_model', 
+    parser.add_argument('--pretrained_pth', '-ppth', type=str, 
+                        help='the path to pretrained model')
+    parser.add_argument('--compressed_dir', '-cpdir', type=str, default='compressed_model', 
                         help='the directory containing compressed model')
 
     args = parser.parse_args()

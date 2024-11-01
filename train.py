@@ -92,7 +92,7 @@ def main():
             pbar.update(1)
     
     os.makedirs(f"{args.output_dir}", exist_ok=True)
-    output_pth = f"{args.output_dir}/{model_name}_{dataset_name}_original.pth"
+    output_pth = f"{args.output_dir}/{model_name}_{dataset_name}_pretrained.pth"
     torch.save(best_model, output_pth)
     logging.info(f"Pretrained model saved at {output_pth}")
     print(f"Pretrained model saved at {output_pth}")

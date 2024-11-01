@@ -10,12 +10,12 @@ CKPT=checkpoint
 PRETRAINED_MODEL_DIR=pretrained_model
 COMPRESSED_MODEL_DIR=compressed_model
 CKPT_DIR=${CKPT}/${MODEL}_${DATASET}
-PRETRAINED_MODEL_PTH=${PRETRAINED_MODEL_DIR}/${MODEL}_${DATASET}_original.pth
+PRETRAINED_MODEL_PTH=${PRETRAINED_MODEL_DIR}/${MODEL}_${DATASET}_pretrained.pth
 COMPRESSED_MODEL_PTH=${COMPRESSED_MODEL_DIR}/${MODEL}_${DATASET}_${SPARSITY}.pth
 
 
 # Step 1: train model (This is optional, skip this step if you have pretrained model)
-# If you skip shis, make sure your pretrained model is named as "${model}_${dataset}_original.pth"
+# If you skip shis, make sure your pretrained model is named as "${model}_${dataset}_pretrained.pth"
 python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
                 --output_dir ${PRETRAINED_MODEL_DIR} \
                 --log_dir ${LOG} --use_wandb
@@ -24,10 +24,10 @@ python -m train --model ${MODEL} --dataset ${DATASET} --device cuda \
 # Step 2: Compress trained model
 python -m compress --model ${MODEL} --dataset ${DATASET} --device cuda \
                    --sparsity ${SPARSITY} --prune_strategy taylor --ppo \
-                   --pretrained_dir ${PRETRAINED_MODEL_DIR} \
+                   --pretrained_pth ${PRETRAINED_MODEL_PTH} \
                    --compressed_dir ${COMPRESSED_MODEL_DIR} \
                    --checkpoint_dir ${CKPT_DIR} \
-                   --log_dir ${LOG} --use_wandb \
+                   --log_dir ${LOG} --use_wandb --save_model \
                    # --resume --resume_epoch 5
 
 

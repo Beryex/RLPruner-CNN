@@ -1,7 +1,8 @@
 # hyperparameter for Reinforcement Learning
 RL_STEP_LENGTH = 0.1
 RL_PRUNE_FILTER_NOISE_VAR = 0.04
-RL_Q_VALUE_ALPHA = 0
+RL_FLOP_COEF = 0
+RL_PARA_COEF = 0
 
 RL_PPO_CLIP = 0.25
 RL_PPO_ENABLE = True

@@ -48,9 +48,15 @@ def setup_logging(log_dir: str,
         "random_seed": random_seed
     }
     hyperparams_config.update(vars(args))
+    if action == 'compress':
+        wandb_run_name = f"{action}_{model_name}_on_{dataset_name}_{args.Q_FLOP_coef}_{args.Q_Para_coef}"
+        logging_file_name = f"{log_dir}/log_{action}_{model_name}_{dataset_name}_{args.Q_FLOP_coef}_{args.Q_Para_coef}.txt"
+    else:
+        wandb_run_name = f"{action}_{model_name}_on_{dataset_name}"
+        logging_file_name = f"{log_dir}/log_{action}_{model_name}_{dataset_name}.txt"
     wandb.init(
         project=project_name,
-        name=f"{action}_{model_name}_on_{dataset_name}_{experiment_id}",
+        name=wandb_run_name,
         id=str(experiment_id),
         config=hyperparams_config,
         resume=True,
@@ -58,7 +64,7 @@ def setup_logging(log_dir: str,
     )
 
     os.makedirs(f"{log_dir}", exist_ok=True)
-    log_filename = f"{log_dir}/log_{action}_{model_name}_{dataset_name}_{experiment_id}.txt"
+    log_filename = logging_file_name
     logging.basicConfig(level=logging.INFO,
                         format='%(levelname)s - %(message)s',
                         handlers=[logging.FileHandler(log_filename)])
