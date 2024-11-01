@@ -13,14 +13,16 @@ CONV_LAYERS = (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d,
 
 # Define supported models
 MODELS = ["vgg11", "vgg13", "vgg16", "vgg19",
-          "googlenet", 
           "resnet18", "resnet34", "resnet50", "resnet101", "resnet152",
           "resnet8", "resnet14", "resnet20", "resnet32", "resnet44", "resnet56", "resnet110",
-          "MobileNetV3_Small", "MobileNetV3_Large"]
+          "densenet121", "densenet161", "densenet169", "densenet201",
+          "MobileNetV3_Small", "MobileNetV3_Large",
+          "googlenet"]
 
 # Define tensor comparision threshold for torch.allclose
 # This is necessary because of tensor computation overflow
 TENSOR_DIFFERENCE_THRESHOLD = 1e-2  # this seems too large, but necessary for some case overflow
+COMPARE_LENGTH = 5
 
 
 def get_model(model_name: str, num_classes: int) -> nn.Module:
@@ -38,9 +40,6 @@ def get_model(model_name: str, num_classes: int) -> nn.Module:
     elif model_name == 'vgg19':
         from models.vgg import vgg19
         return vgg19(in_channels, num_classes)
-    elif model_name == 'googlenet':
-        from models.googlenet import GoogleNet
-        return GoogleNet(in_channels, num_classes)
     elif model_name == 'resnet18':
         from models.resnet import resnet18
         return resnet18(in_channels, num_classes)
@@ -77,12 +76,27 @@ def get_model(model_name: str, num_classes: int) -> nn.Module:
     elif model_name == 'resnet110':
         from models.resnet_tiny import resnet110
         return resnet110(in_channels, num_classes)
+    elif model_name == 'densenet121':
+        from models.densenet import densenet121
+        return densenet121(in_channels, num_classes)
+    elif model_name == 'densenet209':
+        from models.densenet import densenet169
+        return densenet169(in_channels, num_classes)
+    elif model_name == 'densenet201':
+        from models.densenet import densenet201
+        return densenet201(in_channels, num_classes)
+    elif model_name == 'densenet161':
+        from models.densenet import densenet161
+        return densenet161(in_channels, num_classes)
     elif model_name == 'MobileNetV3_Small':
         from models.mobilenetv3 import MobileNetV3_Small
         return MobileNetV3_Small(in_channels, num_classes)
     elif model_name == 'MobileNetV3_Large':
         from models.mobilenetv3 import MobileNetV3_Large
         return MobileNetV3_Large(in_channels, num_classes)
+    elif model_name == 'googlenet':
+        from models.googlenet import GoogleNet
+        return GoogleNet(in_channels, num_classes)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
@@ -103,7 +117,7 @@ def recover_inplace_status(model: nn.Module, original_inplace_state: Dict):
 
 
 @torch.no_grad()
-def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
+def extract_prunable_layers_info(model: nn.Module, skip_layer_index: List) -> Tuple[Tensor, int, List]:
     """ Extracts prunable layer information from a given neural network model """
     prunable_layers = []
     output_dims = []
@@ -122,10 +136,12 @@ def extract_prunable_layers_info(model: nn.Module) -> Tuple[Tensor, int, List]:
     
     recursive_extract_prunable_layers_info(model)
     
-    # remove the ouput layer as its out dim should equal to class num and can not be pruned
-    # assumer the output layer is the last defined
+    # skip the ouput layer as its out dim should equal to class num and can not be pruned
     del prunable_layers[-1]
     del output_dims[-1]
+
+    prunable_layers = [item for idx, item in enumerate(prunable_layers) if idx not in skip_layer_index]
+    output_dims = [item for idx, item in enumerate(output_dims) if idx not in skip_layer_index]
 
     total_output_dim = sum(output_dims)
     filter_distribution = [dim / total_output_dim for dim in output_dims]
@@ -191,8 +207,7 @@ def extract_prunable_layer_dependence(model: nn.Module,
     """ link special layer """
     for output_layer, output_tensor in get_layer_output_tensor.items():
         for input_layer, input_tensor in get_layer_input_tensor.items():
-            if (id(input_layer) == id(output_layer)
-                    or isinstance(input_layer, NORM_LAYERS)):       # assume input layer is never norm type
+            if (id(input_layer) == id(output_layer)):
                 continue
             if (isinstance (input_layer, nn.Linear) 
                     and check_tensor_use_view(output_tensor, input_tensor)):
@@ -202,23 +217,22 @@ def extract_prunable_layer_dependence(model: nn.Module,
                 elif input_layer not in get_tensor_recipients[id(output_tensor)]:
                     get_tensor_recipients[id(output_tensor)].append(input_layer)
             
-            elif check_tensor_in_concat(output_tensor, input_tensor):
-                # case 2: use torch.cat
-                if id(output_tensor) not in get_tensor_recipients:
-                    get_tensor_recipients[id(output_tensor)] = [input_layer]
-                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
-                    get_tensor_recipients[id(output_tensor)].append(input_layer)
-            
             elif check_tensor_addition(output_tensor, input_tensor, get_layer_output_tensor):
-                # case 3: input_tensor = output_tensor + another output_tensor
+                # case 2: input_tensor = output_tensor + another output_tensor
                 if id(output_tensor) not in get_tensor_recipients:
                     get_tensor_recipients[id(output_tensor)] = [input_layer]
                 elif input_layer not in get_tensor_recipients[id(output_tensor)]:
                     get_tensor_recipients[id(output_tensor)].append(input_layer)
             
             elif check_tensor_residual(output_tensor, input_tensor, get_layer_input_tensor):
-                # case 4: use residual short cut: input_tensor = output_tensor + another input_tensor
-                # actually after I turn off all inplace execution, case 4 will be included as case 3
+                # case 3: use residual short cut: input_tensor = output_tensor + another input_tensor
+                if id(output_tensor) not in get_tensor_recipients:
+                    get_tensor_recipients[id(output_tensor)] = [input_layer]
+                elif input_layer not in get_tensor_recipients[id(output_tensor)]:
+                    get_tensor_recipients[id(output_tensor)].append(input_layer)
+            
+            elif check_tensor_in_concat(output_tensor, input_tensor):
+                # case 4: use torch.cat
                 if id(output_tensor) not in get_tensor_recipients:
                     get_tensor_recipients[id(output_tensor)] = [input_layer]
                 elif input_layer not in get_tensor_recipients[id(output_tensor)]:
@@ -372,8 +386,13 @@ def get_tensor_idx_at_next_layer(input_tensor: Tensor, component_tensor: Tensor)
 
 def check_tensor_use_view(input_tensor: Tensor, target_tensor: Tensor) -> bool:
     """ Check whether target_tensor is acquired using input_tensor.view() """
-    return torch.equal(input_tensor.view(input_tensor.size(0), -1), 
-                       target_tensor.view(target_tensor.size(0), -1))
+    input_view = input_tensor.view(input_tensor.size(0), -1)
+    target_view = target_tensor.view(target_tensor.size(0), -1)
+    
+    if input_view.size(1) > COMPARE_LENGTH:
+        return torch.equal(input_view[:, :COMPARE_LENGTH], target_view[:, :COMPARE_LENGTH])
+    
+    return torch.equal(input_view, target_view)
 
 
 def check_tensor_addition(input_tensor: Tensor, 
@@ -384,9 +403,13 @@ def check_tensor_addition(input_tensor: Tensor,
         return False
     
     residual_tensor = component_tensor - input_tensor
+    slice_dim1 = min(COMPARE_LENGTH, residual_tensor.size(-2))
+    slice_dim2 = min(COMPARE_LENGTH, residual_tensor.size(-1))
     for tensor in get_layer_output_tensor.values():
         if tensor.shape == residual_tensor.shape:
-            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(tensor[..., :slice_dim1, :slice_dim2], 
+                              residual_tensor[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
     return False
 
@@ -399,9 +422,13 @@ def check_tensor_residual(input_tensor: Tensor,
         return False
     
     residual_tensor = component_tensor - input_tensor
+    slice_dim1 = min(COMPARE_LENGTH, residual_tensor.size(-2))
+    slice_dim2 = min(COMPARE_LENGTH, residual_tensor.size(-1))
     for tensor in get_layer_input_tensor.values():
         if tensor.shape == residual_tensor.shape:
-            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(tensor[..., :slice_dim1, :slice_dim2], 
+                              residual_tensor[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
     return False
 
@@ -421,16 +448,22 @@ def check_tensor_squeeze_excitation(input_tensor: Tensor,
             return False
         input_tensor = input_tensor.reshape(component_tensor.shape)
     residual_tensor = component_tensor / input_tensor
+    slice_dim1 = min(COMPARE_LENGTH, residual_tensor.size(-2))
+    slice_dim2 = min(COMPARE_LENGTH, residual_tensor.size(-1))
     for tensor in get_layer_output_tensor.values():
         if tensor.shape == residual_tensor.shape:
-            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(tensor[..., :slice_dim1, :slice_dim2], 
+                              residual_tensor[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
         elif (tensor.ndim == residual_tensor.ndim
                 and tensor.shape[0:2] == residual_tensor.shape[0:2]
                 and tensor.shape[2:4] == torch.Size([1, 1])):
             # Here again, we should also expand dimension
             tensor = tensor.expand_as(residual_tensor)
-            if torch.allclose(tensor, residual_tensor, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(tensor[..., :slice_dim1, :slice_dim2], 
+                              residual_tensor[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
             
     return False
@@ -449,20 +482,30 @@ def check_tensor_in_cluster(input_tensor: Tensor,
             return False
     target_tensor1 = component_tensor - input_tensor
     target_tensor2 = component_tensor / input_tensor
+    slice_dim1 = min(COMPARE_LENGTH, target_tensor1.size(-2), target_tensor2.size(-2))
+    slice_dim2 = min(COMPARE_LENGTH, target_tensor1.size(-1), target_tensor2.size(-1))
     for cluster_input_tensor in cur_cluster_tensors:
         if cluster_input_tensor.shape == target_tensor1.shape:
-            if torch.allclose(cluster_input_tensor, target_tensor1, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(cluster_input_tensor[..., :slice_dim1, :slice_dim2],
+                              target_tensor1[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
-            if torch.allclose(cluster_input_tensor, target_tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(cluster_input_tensor[..., :slice_dim1, :slice_dim2], 
+                              target_tensor2[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
         elif (cluster_input_tensor.ndim == target_tensor1.ndim
                 and cluster_input_tensor.shape[0:2] == target_tensor1.shape[0:2]
                 and cluster_input_tensor.shape[2:4] == torch.Size([1, 1])):
             # Here again, we should also expand dimension
             cluster_input_tensor = cluster_input_tensor.expand_as(target_tensor1)
-            if torch.allclose(cluster_input_tensor, target_tensor1, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(cluster_input_tensor[..., :slice_dim1, :slice_dim2],
+                              target_tensor1[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
-            if torch.allclose(cluster_input_tensor, target_tensor2, atol=TENSOR_DIFFERENCE_THRESHOLD):
+            if torch.allclose(cluster_input_tensor[..., :slice_dim1, :slice_dim2], 
+                              target_tensor2[..., :slice_dim1, :slice_dim2], 
+                              atol=TENSOR_DIFFERENCE_THRESHOLD):
                 return True
             
     return False

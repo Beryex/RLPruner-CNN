@@ -21,6 +21,7 @@ class RL_Pruner():
     """ Agent used to prune architecture and maintain prune_distribution """
     def __init__(self,
                  model: nn.Module,
+                 skip_layer_index: str,
                  sample_input: Tensor,
                  prune_steps: int,
                  explore_strategy: str,
@@ -29,13 +30,22 @@ class RL_Pruner():
                  sample_num: int,
                  prune_filter_ratio: float,
                  noise_var: float,
-                 Q_value_alpha: float):
+                 Q_FLOP_coef: float,
+                 Q_Para_coef: float):
         """ Extract prunable layer and layer dependence """
         logging.info(f'Start extracting layers dependency')
         print(f"Start extracting layers dependency")
         original_inplace_state = {}
         set_inplace_false(model, original_inplace_state)
-        prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(model)
+        if skip_layer_index == '':
+            skip_layer_index = []
+        else:
+            skip_layer_index = [int(item) for item in skip_layer_index.split(',')]
+        prune_distribution, filter_num, prunable_layers = extract_prunable_layers_info(model, 
+                                                                                       skip_layer_index)
+        logging.info(f"Skip layer at index: {skip_layer_index}")
+        print(f"Skip layer at index: {skip_layer_index}")
+        
         next_layers, layer_cluster_mask = extract_prunable_layer_dependence(model, 
                                                                             sample_input, 
                                                                             prunable_layers)
@@ -51,6 +61,7 @@ class RL_Pruner():
                        step=0)
 
         """ Static Data: These attributes do not change after initialization """
+        self.skip_layer_index = skip_layer_index
         self.prune_steps = prune_steps
         self.explore_strategy = explore_strategy
         self.initial_greedy_epsilon = greedy_epsilon
@@ -59,7 +70,8 @@ class RL_Pruner():
         self.modification_num = int(filter_num * prune_filter_ratio)
         self.layer_cluster_mask = layer_cluster_mask
         self.noise_var = noise_var
-        self.Q_value_alpha = Q_value_alpha
+        self.Q_FLOP_coef = Q_FLOP_coef
+        self.Q_Para_coef = Q_Para_coef
         
         """ Dynamic Data: These attributes may change during the object's lifetime """
         self.cur_step = 0
@@ -97,11 +109,13 @@ class RL_Pruner():
     def step(self) -> None:
         """ Increment prune step and update relevant parameter"""
         self.cur_step += 1
-        if self.explore_strategy == "linear":
-            self.greedy_epsilon = (1 - self.cur_step / self.prune_steps) * self.initial_greedy_epsilon
-        elif self.explore_strategy == "cosine":
-            self.greedy_epsilon = 0.5 * (1 + math.cos(math.pi * self.cur_step / self.prune_steps)) * self.initial_greedy_epsilon
-    
+        if self.cur_step <= self.prune_steps * 0.1:
+            if self.explore_strategy == "linear":
+                self.greedy_epsilon = max((1 - self.cur_step / (self.prune_steps * 0.1)) * self.initial_greedy_epsilon, 0)
+            elif self.explore_strategy == "cosine":
+                self.greedy_epsilon = max(0.5 * (1 + math.cos(math.pi * self.cur_step / (self.prune_steps * 0.1))) * self.initial_greedy_epsilon, 0)
+        else:
+            self.greedy_epsilon = 0
 
     def resume_model(self, model: nn.Module, sample_input: Tensor) -> None:
         """ Resume the model and link it """
@@ -109,7 +123,8 @@ class RL_Pruner():
         print(f"Start extracting layers dependency")
         original_inplace_state = {}
         set_inplace_false(model, original_inplace_state)
-        _, _, prunable_layers = extract_prunable_layers_info(model)
+        _, _, prunable_layers = extract_prunable_layers_info(model,
+                                                             self.skip_layer_index)
         next_layers, _ = extract_prunable_layer_dependence(model, 
                                                            sample_input, 
                                                            prunable_layers)
@@ -226,7 +241,7 @@ class RL_Pruner():
     
     def Q_value_function(self, top1_acc: float, FLOPs_ratio: float, Para_ratio: float) -> float:
         """ Compute the Q value """
-        return top1_acc + self.Q_value_alpha * FLOPs_ratio
+        return top1_acc + self.Q_FLOP_coef * FLOPs_ratio + self.Q_Para_coef * Para_ratio
     
 
     def update_ReplayBuffer(self, 
@@ -257,37 +272,27 @@ class RL_Pruner():
         prune_counter = torch.round(PD * self.modification_num).int()
         
         # Adjust if the sum doesn't match self.modification_num
-        current_sum = prune_counter.sum().item()
-        difference = self.modification_num - current_sum
-
-        if difference > 0:
-            fractional_parts = PD * self.modification_num - prune_counter.float()
-            _, sorted_indices = torch.sort(fractional_parts, descending=True)
-            i = 0
-            while difference > 0:
-                layer_idx = sorted_indices[i]
-                if self.layer_cluster_mask[layer_idx] == 0 and PD[layer_idx] > 0:
-                    prune_counter[layer_idx] += 1
-                    difference -= 1
-                i += 1
-                if i >= len(prune_counter):
-                    i = 0
-
-        elif difference < 0:
-            fractional_parts = prune_counter.float() - PD * self.modification_num
-            _, sorted_indices = torch.sort(fractional_parts, descending=True)
-            i = 0
-            while difference < 0:
-                layer_idx = sorted_indices[i]
-                if self.layer_cluster_mask[layer_idx] == 0:
-                    prune_counter[layer_idx] = max(prune_counter[layer_idx] - 1, 0)
-                    difference += 1
-                i += 1
-                if i >= len(prune_counter):
-                    i = 0
+        initial_sum = prune_counter.sum().item()
+        difference = self.modification_num - initial_sum
+        incre = True if difference > 0 else False
+        dif_list = [abs(difference)]
+        mod_list = [self.modification_num]
+        cur_mod = self.modification_num
+        while True:
+            cur_mod += 1 if incre else -1
+            cur_prune_counter = torch.round(PD * cur_mod).int()
+            cur_sum = cur_prune_counter.sum().item()
+            cur_dif = self.modification_num - cur_sum
+            dif_list.append(abs(cur_dif))
+            mod_list.append(cur_mod)
+            if (cur_dif < 0 and incre == True) or (cur_dif > 0 and incre == False):
+                break
+        target_idx = dif_list.index(min(dif_list))
+        target_modification_num = mod_list[target_idx]
+        target_prune_counter = torch.round(PD * target_modification_num).int()
         
-        prune_counter = prune_counter.tolist()
-        return prune_counter
+        target_prune_counter = target_prune_counter.tolist()
+        return target_prune_counter
 
 
     def _get_filter_importance(self, 

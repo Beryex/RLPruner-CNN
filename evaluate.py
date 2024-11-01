@@ -10,7 +10,7 @@ from prettytable import PrettyTable
 
 from conf import settings
 from utils import (get_dataloader, setup_logging, torch_set_random_seed, 
-                   DATASETS)
+                   extract_prunable_layers_info, DATASETS)
 
 
 def main():
@@ -91,6 +91,8 @@ def evaluate_model_stat(pretrained_model: nn.Module,
     Mem_com = (Mem_params_com + Mem_bufs_com) / 1024 ** 3   # switch to GB
     file_size_pre = os.path.getsize(args.pretrained_pth) / 1024 ** 2   # switch to MB
     file_size_com = os.path.getsize(args.compressed_pth) / 1024 ** 2    # switch to MB
+    _, Filter_Neuron_num_pre, _ = extract_prunable_layers_info(pretrained_model, [])
+    _, Filter_Neuron_num_com, _ = extract_prunable_layers_info(compressed_model, [])
     
     results["FLOPs"] = (FLOPs_pre, 
                         FLOPs_com, 
@@ -98,6 +100,9 @@ def evaluate_model_stat(pretrained_model: nn.Module,
     results["Para"] = (Para_pre, 
                        Para_com, 
                        "{:.2f}%".format((1 - Para_com / Para_pre) * 100))
+    results["Filter and neuron number"] = (Filter_Neuron_num_pre,
+                                           Filter_Neuron_num_com,
+                                           "{:.2f}%".format((1 - Filter_Neuron_num_com / Filter_Neuron_num_pre) * 100))
     results["Mem (GB)"] = (Mem_pre, 
                            Mem_com, 
                            "{:.2f}%".format((1 - Mem_com / Mem_pre) * 100))
