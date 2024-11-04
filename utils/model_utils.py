@@ -16,7 +16,7 @@ MODELS = ["vgg11", "vgg13", "vgg16", "vgg19",
           "resnet18", "resnet34", "resnet50", "resnet101", "resnet152",
           "resnet8", "resnet14", "resnet20", "resnet32", "resnet44", "resnet56", "resnet110",
           "densenet121", "densenet161", "densenet169", "densenet201",
-          "MobileNetV3_Small", "MobileNetV3_Large",
+          "mobilenetv3_small", "mobilenetv3_large",
           "googlenet"]
 
 # Define tensor comparision threshold for torch.allclose
@@ -88,10 +88,10 @@ def get_model(model_name: str, num_classes: int) -> nn.Module:
     elif model_name == 'densenet161':
         from models.densenet import densenet161
         return densenet161(in_channels, num_classes)
-    elif model_name == 'MobileNetV3_Small':
+    elif model_name == 'mobilenetv3_small':
         from models.mobilenetv3 import MobileNetV3_Small
         return MobileNetV3_Small(in_channels, num_classes)
-    elif model_name == 'MobileNetV3_Large':
+    elif model_name == 'mobilenetv3_large':
         from models.mobilenetv3 import MobileNetV3_Large
         return MobileNetV3_Large(in_channels, num_classes)
     elif model_name == 'googlenet':

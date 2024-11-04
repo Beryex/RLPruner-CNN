@@ -51,9 +51,8 @@ def main():
     logging.info("Start evaluating")
     print(f"Start evaluating")
     results = {}
-    results = evaluate_model_stat(pretrained_model, compressed_model, results)
     results = evaluate_inference(pretrained_model, compressed_model, results)
-    print(compressed_model)
+    results = evaluate_model_stat(pretrained_model, compressed_model, results)
     results_table = PrettyTable()
     results_table.field_names = ["Metrics", 
                                  f"Pretrained {model_name}", 
@@ -67,50 +66,6 @@ def main():
                      f"Improvement: {result[2]}")
     logging.info(f"Compressed model: {compressed_model}")
     print(results_table.get_string(title=f"Compression results of {model_name} on {dataset_name}"))
-
-
-def evaluate_model_stat(pretrained_model: nn.Module,
-                        compressed_model: nn.Module,
-                        results: Dict) -> Dict:
-    if dataset_name == 'mnist':
-        sample_input = torch.rand(1, 1, 32, 32).to(device)
-    else:
-        sample_input = torch.rand(1, 3, 32, 32).to(device)
-
-    FLOPs_pre, Para_pre = profile(model=pretrained_model, 
-                                  inputs = (sample_input, ), 
-                                  verbose=False)
-    FLOPs_com, Para_com = profile(model=compressed_model, 
-                                  inputs = (sample_input, ), 
-                                  verbose=False)
-    Mem_params_pre = sum([param.nelement()*param.element_size() for param in pretrained_model.parameters()])
-    Mem_bufs_pre = sum([buf.nelement()*buf.element_size() for buf in pretrained_model.buffers()])
-    Mem_pre = (Mem_params_pre + Mem_bufs_pre) / 1024 ** 3   # switch to GB
-    Mem_params_com = sum([param.nelement()*param.element_size() for param in compressed_model.parameters()])
-    Mem_bufs_com = sum([buf.nelement()*buf.element_size() for buf in compressed_model.buffers()])
-    Mem_com = (Mem_params_com + Mem_bufs_com) / 1024 ** 3   # switch to GB
-    file_size_pre = os.path.getsize(args.pretrained_pth) / 1024 ** 2   # switch to MB
-    file_size_com = os.path.getsize(args.compressed_pth) / 1024 ** 2    # switch to MB
-    _, Filter_Neuron_num_pre, _ = extract_prunable_layers_info(pretrained_model, [])
-    _, Filter_Neuron_num_com, _ = extract_prunable_layers_info(compressed_model, [])
-    
-    results["FLOPs"] = (FLOPs_pre, 
-                        FLOPs_com, 
-                        "{:.2f}%".format((1 - FLOPs_com / FLOPs_pre) * 100))
-    results["Para"] = (Para_pre, 
-                       Para_com, 
-                       "{:.2f}%".format((1 - Para_com / Para_pre) * 100))
-    results["Filter and neuron number"] = (Filter_Neuron_num_pre,
-                                           Filter_Neuron_num_com,
-                                           "{:.2f}%".format((1 - Filter_Neuron_num_com / Filter_Neuron_num_pre) * 100))
-    results["Mem (GB)"] = (Mem_pre, 
-                           Mem_com, 
-                           "{:.2f}%".format((1 - Mem_com / Mem_pre) * 100))
-    results["File Size (MB)"] = (file_size_pre, 
-                                 file_size_com, 
-                                 "{:.2f}%".format((1 - file_size_com / file_size_pre) * 100))
-    
-    return results
 
 
 @torch.no_grad()
@@ -156,6 +111,50 @@ def evaluate_inference(pretrained_model: nn.Module,
                            top5_acc_com,
                            "{:.2f}%".format((top5_acc_com - top5_acc_pre) * 100))
 
+    return results
+
+
+def evaluate_model_stat(pretrained_model: nn.Module,
+                        compressed_model: nn.Module,
+                        results: Dict) -> Dict:
+    if dataset_name == 'mnist':
+        sample_input = torch.rand(1, 1, 32, 32).to(device)
+    else:
+        sample_input = torch.rand(1, 3, 32, 32).to(device)
+
+    FLOPs_pre, Para_pre = profile(model=pretrained_model, 
+                                  inputs = (sample_input, ), 
+                                  verbose=False)
+    FLOPs_com, Para_com = profile(model=compressed_model, 
+                                  inputs = (sample_input, ), 
+                                  verbose=False)
+    Mem_params_pre = sum([param.nelement()*param.element_size() for param in pretrained_model.parameters()])
+    Mem_bufs_pre = sum([buf.nelement()*buf.element_size() for buf in pretrained_model.buffers()])
+    Mem_pre = (Mem_params_pre + Mem_bufs_pre) / 1024 ** 3   # switch to GB
+    Mem_params_com = sum([param.nelement()*param.element_size() for param in compressed_model.parameters()])
+    Mem_bufs_com = sum([buf.nelement()*buf.element_size() for buf in compressed_model.buffers()])
+    Mem_com = (Mem_params_com + Mem_bufs_com) / 1024 ** 3   # switch to GB
+    file_size_pre = os.path.getsize(args.pretrained_pth) / 1024 ** 2   # switch to MB
+    file_size_com = os.path.getsize(args.compressed_pth) / 1024 ** 2    # switch to MB
+    _, Filter_Neuron_num_pre, _ = extract_prunable_layers_info(pretrained_model, [])
+    _, Filter_Neuron_num_com, _ = extract_prunable_layers_info(compressed_model, [])
+    
+    results["FLOPs"] = (FLOPs_pre, 
+                        FLOPs_com, 
+                        "{:.2f}%".format((1 - FLOPs_com / FLOPs_pre) * 100))
+    results["Para"] = (Para_pre, 
+                       Para_com, 
+                       "{:.2f}%".format((1 - Para_com / Para_pre) * 100))
+    results["Filter and neuron number"] = (Filter_Neuron_num_pre,
+                                           Filter_Neuron_num_com,
+                                           "{:.2f}%".format((1 - Filter_Neuron_num_com / Filter_Neuron_num_pre) * 100))
+    results["Mem (GB)"] = (Mem_pre, 
+                           Mem_com, 
+                           "{:.2f}%".format((1 - Mem_com / Mem_pre) * 100))
+    results["File Size (MB)"] = (file_size_pre, 
+                                 file_size_com, 
+                                 "{:.2f}%".format((1 - file_size_com / file_size_pre) * 100))
+    
     return results
 
 
