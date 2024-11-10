@@ -1,15 +1,20 @@
 #!/bin/bash
 
-MODEL=vgg16
+MODEL=vgg19
 DATASET=cifar100
+SPARSITY=0.95
+Q_FLOP_coef=0.00
+Q_Para_coef=0.00
 
-SPARSITY=0.80
+SPARSITY=$(printf "%.2f" "$SPARSITY")
+Q_FLOP_coef=$(printf "%.2f" "$Q_FLOP_coef")
+Q_Para_coef=$(printf "%.2f" "$Q_Para_coef")
 
 LOG=log
 CKPT=checkpoint
 PRETRAINED_MODEL_DIR=pretrained_model
 COMPRESSED_MODEL_DIR=compressed_model
-CKPT_DIR=${CKPT}/${MODEL}_${DATASET}
+CKPT_DIR=${CKPT}/${MODEL}_${DATASET}_${SPARSITY}_${Q_FLOP_coef}_${Q_Para_coef}
 PRETRAINED_MODEL_PTH=${PRETRAINED_MODEL_DIR}/${MODEL}_${DATASET}_pretrained.pth
 COMPRESSED_MODEL_PTH=${COMPRESSED_MODEL_DIR}/${MODEL}_${DATASET}_${SPARSITY}.pth
 

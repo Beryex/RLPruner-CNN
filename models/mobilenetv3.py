@@ -82,9 +82,9 @@ class Block(nn.Module):
         return self.act3(out + skip)
 
 
-class MobileNetV3_Small(nn.Module):
+class mobilenetv3_small(nn.Module):
     def __init__(self, in_channels=3, num_classes=1000, act=nn.Hardswish):
-        super(MobileNetV3_Small, self).__init__()
+        super(mobilenetv3_small, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.hs1 = act(inplace=True)
@@ -127,9 +127,9 @@ class MobileNetV3_Small(nn.Module):
         return self.linear4(out)
 
 
-class MobileNetV3_Large(nn.Module):
+class mobilenetv3_large(nn.Module):
     def __init__(self, in_channels=3, num_classes=1000, act=nn.Hardswish):
-        super(MobileNetV3_Large, self).__init__()
+        super(mobilenetv3_large, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.hs1 = act(inplace=True)
