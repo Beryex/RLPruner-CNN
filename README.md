@@ -2,7 +2,11 @@
 
 [[Paper](https://beryex.github.io/files/RLPruner_PREPRINT.pdf)]
 
-End-to-end structured pruning based on reinforcement learning for CNNs.
+Official PyTorch Implementation for the "RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration" paper  
+
+<p align="center">
+    🌐 <a href="https://beryex.github.io/RLPruner-page" target="_blank">Project</a> | 📃 <a href="https://beryex.github.io/files/RLPruner_PREPRINT.pdf" target="_blank">Paper</a> <br>
+</p>
 
 ![overview](assets/CNN_method_description.jpg)
 
