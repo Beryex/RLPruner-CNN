@@ -1,9 +1,14 @@
 #!/bin/bash
 
-MODEL=vgg16
+MODEL=vgg19
 DATASET=cifar100
+SPARSITY=0.95
+Q_FLOP_coef=0.00
+Q_Para_coef=0.00
 
-SPARSITY=0.80
+SPARSITY=$(printf "%.2f" "$SPARSITY")
+Q_FLOP_coef=$(printf "%.2f" "$Q_FLOP_coef")
+Q_Para_coef=$(printf "%.2f" "$Q_Para_coef")
 
 LOG=log
 CKPT=checkpoint
