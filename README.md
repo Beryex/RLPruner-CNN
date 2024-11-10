@@ -1,7 +1,5 @@
 # RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration  
 
-[[Paper](https://beryex.github.io/files/RLPruner_PREPRINT.pdf)]
-
 Official PyTorch Implementation for the "RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration" paper  
 
 <p align="center">
