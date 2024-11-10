@@ -1,4 +1,6 @@
-# RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration
+# RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration  
+
+[[Paper](https://beryex.github.io/files/RLPruner_PREPRINT.pdf)]
 
 End-to-end structured pruning based on reinforcement learning for CNNs.
 
