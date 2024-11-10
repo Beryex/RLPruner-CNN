@@ -40,7 +40,11 @@ RL-Pruner support grouped convolution, but it will only prune depthwise convolut
 
 If you encounter any issues with RL-Pruner failing to detect layer dependencies in a specific CNN model or during the pruning process, please feel free to open an issue.
 
-An example bash script, [scripts/example.sh](scripts/example.sh), demonstrates how to train VGG-19 from scratch on CIFAR-100, compress the model, and evaluate the compression results. Change the model and dataset to try your own model and you need to store your model with name `{model_name}_{dataset_name}_pretrained.pth` at `pretrained_model` folder. All default hyperparameter settings can be found in [conf/global_settings.py](conf/global_settings.py).
+An example bash script, [scripts/example.sh](scripts/example.sh), demonstrates how to train VGG-19 from scratch on CIFAR-100, compress the model, and evaluate the compression results. Additional scripts for flexible configurations, as well as individual scripts for training, pruning, and evaluation, can be found in the [scripts](scripts) folder. For instance, to train and compress GoogLeNet on CIFAR-100, you can use the following command:
+```bash
+bash scripts/flexible.sh googlenet cifar100 0.20 taylor 0.00 0.00
+```
+To experiment with different models and datasets, adjust the script accordingly and save your pretrained model as `{model_name}_{dataset_name}_pretrained.pth` at `pretrained_model` folder. All default hyperparameter settings can be found in [conf/global_settings.py](conf/global_settings.py).
 
 ## Results
 

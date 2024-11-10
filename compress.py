@@ -298,12 +298,12 @@ def main():
                               'Top1_acc': best_acc})
             pbar.update(1)
 
-            if epoch % 5 == 0 and args.save_model:
-                os.makedirs(f"{args.compressed_dir}", exist_ok=True)
-                compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{epoch * args.prune_filter_ratio:.2f}_{args.Q_FLOP_coef:.2f}_{args.Q_Para_coef:.2f}.pth"
-                torch.save(model_with_info[0], f"{compressed_pth}")
-                logging.info(f"Compressed model saved at {compressed_pth}")
-                print(f"Compressed model saved at {compressed_pth}")
+        if args.save_model:
+            os.makedirs(f"{args.compressed_dir}", exist_ok=True)
+            compressed_pth = f"{args.compressed_dir}/{model_name}_{dataset_name}_{epoch * args.prune_filter_ratio:.2f}_{args.Q_FLOP_coef:.2f}_{args.Q_Para_coef:.2f}.pth"
+            torch.save(model_with_info[0], f"{compressed_pth}")
+            logging.info(f"Compressed model saved at {compressed_pth}")
+            print(f"Compressed model saved at {compressed_pth}")
         
         wandb.finish()
 
@@ -464,6 +464,7 @@ def get_args():
                         help='the layer to skip when pruning')
     parser.add_argument('--prune_strategy', '-ps', type=str, default=settings.C_PRUNE_STRATEGY, 
                         help='strategy to evaluate unimportant weights')
+    
     parser.add_argument('--explore_strategy', '-es', type=str, default=settings.RL_EXPLORE_STRATEGY, 
                         help='strategy to evaluate unimportant weights')
     parser.add_argument('--calibration_num', '-cn', type=int, default=settings.C_CALIBRATION_NUM, 
@@ -492,6 +493,7 @@ def get_args():
                         help='enable Proximal Policy Optimization')
     parser.add_argument('--ppo_clip', '-ppoc', type=float, default=settings.RL_PPO_CLIP, 
                         help='the clip value for PPO')
+    
     parser.add_argument('--post_train_period', type=int, default=settings.T_PT_PERIOD, 
                         help='the epoch period of post training during compression')
     parser.add_argument('--lr', '-lr', type=float, default=settings.T_PT_LR_SCHEDULER_INITIAL_LR,
@@ -510,6 +512,7 @@ def get_args():
                         help='batch size for dataloader')
     parser.add_argument('--num_worker', '-n', type=int, default=settings.T_NUM_WORKER, 
                         help='number of workers for dataloader')
+    
     parser.add_argument('--device', '-dev', type=str, default='cpu', 
                         help='device to use')
     parser.add_argument('--random_seed', '-rs', type=int, default=1, 

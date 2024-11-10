@@ -89,14 +89,14 @@ def get_model(model_name: str, num_classes: int) -> nn.Module:
         from models import densenet161
         return densenet161(in_channels, num_classes)
     elif model_name == 'mobilenetv3_small':
-        from models import MobileNetV3_Small
-        return MobileNetV3_Small(in_channels, num_classes)
+        from models import mobilenetv3_small
+        return mobilenetv3_small(in_channels, num_classes)
     elif model_name == 'mobilenetv3_large':
-        from models import MobileNetV3_Large
-        return MobileNetV3_Large(in_channels, num_classes)
+        from models import mobilenetv3_large
+        return mobilenetv3_large(in_channels, num_classes)
     elif model_name == 'googlenet':
-        from models import GoogleNet
-        return GoogleNet(in_channels, num_classes)
+        from models import googlenet
+        return googlenet(in_channels, num_classes)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 

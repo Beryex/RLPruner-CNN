@@ -4,4 +4,3 @@ from models.resnet_tiny import resnet8, resnet14, resnet20, resnet32, resnet44, 
 from models.densenet import densenet121, densenet169, densenet201, densenet161
 from models.mobilenetv3 import mobilenetv3_large, mobilenetv3_small
 from models.googlenet import googlenet
-from models.vgg_test import vgg19_0_40, vgg19_0_80, vgg19_0_60

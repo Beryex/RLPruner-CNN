@@ -16,7 +16,7 @@ PRETRAINED_MODEL_DIR=pretrained_model
 COMPRESSED_MODEL_DIR=compressed_model
 CKPT_DIR=${CKPT}/${MODEL}_${DATASET}_${SPARSITY}_${Q_FLOP_coef}_${Q_Para_coef}
 PRETRAINED_MODEL_PTH=${PRETRAINED_MODEL_DIR}/${MODEL}_${DATASET}_pretrained.pth
-COMPRESSED_MODEL_PTH=${COMPRESSED_MODEL_DIR}/${MODEL}_${DATASET}_${SPARSITY}.pth
+COMPRESSED_MODEL_PTH=${COMPRESSED_MODEL_DIR}/${MODEL}_${DATASET}_${SPARSITY}_${Q_FLOP_coef}_${Q_Para_coef}.pth
 
 
 # Step 1: train model (This is optional, skip this step if you have pretrained model)
