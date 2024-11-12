@@ -3,7 +3,7 @@
 Official PyTorch Implementation for the "RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration" paper  
 
 <p align="center">
-    🌐 <a href="https://beryex.github.io/RLPruner-page" target="_blank">Project</a> | 📃 <a href="https://beryex.github.io/files/RLPruner_PREPRINT.pdf" target="_blank">Paper</a> <br>
+    🌐 <a href="https://beryex.github.io/RLPruner-page" target="_blank">Project</a> | 📃 <a href="https://arxiv.org/abs/2411.06463" target="_blank">Paper</a> <br>
 </p>
 
 ![overview](assets/CNN_method_description.jpg)
@@ -20,6 +20,7 @@ The current release supports:
 	- [Install](#Install)
 	- [Usage](#Usage)
 	- [Results](#Results)
+   	- [Reference](#Reference)
 
 ## Install
 1. Clone the repository and aavigate to the RLPruner working directory
@@ -55,3 +56,16 @@ To experiment with different models and datasets, adjust the script accordingly 
 We conduct experiments on various architectures using the CIFAR-100 dataset.
 
 ![Experiment Results](assets/experiments_result.jpg)
+
+## Reference
+```
+@misc{wang2024rlpruner,
+      title={RL-Pruner: Structured Pruning Using Reinforcement Learning for CNN Compression and Acceleration}, 
+      author={Boyao Wang and Volodymyr Kindratenko},
+      year={2024},
+      eprint={2411.06463},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2411.06463}, 
+}
+```
